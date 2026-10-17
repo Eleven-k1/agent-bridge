@@ -1,0 +1,97 @@
+收到，我已按“模型接入与桌面端负责人”身份就位。以下九项内容中，凡涉及跨模块语义的字段与事件，均是我的候选提案，只有经 M0 负责人（AI-A）纳入契约并经你确认后才生效——我不自行定义公共协议，也不猜测既有字段。
+
+1. M2、M6、M7 的工作拆分
+M2 模型网关与适配器（拆 5 个子块）：
+
+子块	内容	关键约束
+M2.1 统一网关	唯一请求入口、流式事件分发、取消传播、超时计时、有限重试、可重试错误分类	上层不感知品牌；凭据只经 M3 凭据抽象获取
+M2.2 OpenAI 兼容适配器	服务 ChatGPT 中转站	Base URL 可配置；中转站非标准响应做形态校验
+M2.3 Anthropic Messages 类适配器	服务 Claude 中转站	同上
+M2.4 Z.AI 适配器	服务 Z.AI API	同上
+M2.5 协议测试与假服务器	错误格式夹具、SSE 中断模拟、非标准响应样本	全部可用假服务器重复验证
+M2 明确不做：不访问项目文件、不执行工具、不持写入权、不决定任务分配、不把 Key 写入日志/错误/缓存。
+
+M6 本地服务与桌面通信（4 个子块）：服务生命周期（启动、健康检查、优雅关闭、Windows 进程树回收、崩溃检测）；会话与鉴权（仅 127.0.0.1、临时会话令牌、来源验证）；命令/事件通道（命令带幂等键、事件带单调序号、取消、版本协商）；协议兼容检查（不兼容即阻止并给诊断）。M6 不实现编排规则、不决定审批结果。
+
+M7 工作台（7 个子块）：应用外壳与三区布局；事件驱动状态层（单一 store，只从统一事件流派生状态）；群聊与介入入口（@、插话、暂停/继续/停止/换主管/换执行者/重新分工——入口只发命令）；审批卡片（只渲染与提交决定）；Diff/终端/测试/证据展示；设置区（模型连接、连接测试、角色编辑）；恢复界面（未完成任务列表与恢复选择，选择交给用户）。
+
+2. 三类适配器统一的内部接口（提案）
+三个适配器对上层完全同构，输入输出只有一套类型：
+
+接口点	提案语义
+invoke(request) -> ModelEvent 流	统一入口，永远流式；request 含模型名、消息数组、system、参数、超时、取消句柄、{task_id, run_id, agent_id, seq} 元数据
+cancel(request_id)	幂等；已发取消后不得再产生业务 delta
+probeConnection(config) -> ConnectionDiagnostics	连接测试；失败时返回错误类别+脱敏诊断，绝不含完整 Key
+`listModels()	明确不支持`
+能力元数据	流式、取消、用量统计、结束原因等，逐项声明支持与否
+错误映射表	每家原始错误 → 统一 Error 类别（auth / rate_limit / timeout / network / protocol / server / cancelled / unknown），并标注可重试性
+供应商差异只允许存在于适配器内部（请求体组装、流式解析、结束原因映射）；中转站返回畸形响应时归为 protocol 类错误并保留已收内容，不伪造结论。
+
+3. 流式、取消、超时、错误的事件格式（提案）
+先提案统一信封（需 M0 批准）：所有事件携带 event_id, task_id, run_id, seq, ts, type, payload。模型事件在此之上：
+
+事件	关键字段	语义要点
+model.stream.started	request_id	首 token 前发出
+model.stream.delta	request_id, text_delta, index	顺序单调
+model.stream.completed	request_id, finish_reason, usage	正常结束
+model.cancelled	request_id, by(user/system/timeout), content_preserved	之后不得再出现 delta
+model.timeout	request_id, phase(connect / first_token / stream_idle), elapsed_ms	超时分三段，让用户能区分“连不上”和“卡住了”
+model.retry.scheduled	attempt, delay_ms, reason_category	有限重试可见
+model.error	error{category, retryable, provider_message(脱敏), diagnosis_ref}	诊断引用指向日志，正文不含凭据
+关键顺序语义：流式中断时，先入库并发出已收到的 delta，再发 error 事件（对应主方案 9.1“保留已收内容、不伪造失败模型结论”）。这条顺序约定本身也是需要写入 M0 的契约点。
+
+4. Electron 与 Python 服务的通信边界
+传输形态（提案）：回环地址 + 临时端口 + WebSocket 事件流，另有健康检查端点；会话令牌在 Python 进程启动时生成，仅经本进程私有通道交付给本 Electron 实例，不长期落盘。具体库由实施定，但边界不变。
+方向规则：UI → Python 只有 Command（含幂等键 command_id）；Python → UI 只有 Event（统一信封、单调 seq）。UI 永远不接触 SQL、文件系统、Shell、模型 SDK。
+门禁位置：审批与安全门禁只在 M3/M4 程序层执行；通信层不复制规则，但拒绝未鉴权连接（这是传输完整性，不是安全规则的前移）。
+生命周期：Electron 负责启动与关闭；关闭顺序为停止收命令 → 取消进行中可取消操作并记录 → flush 事件 → 终止进程树 → 校验无残留。Python 崩溃时 UI 进入“服务不可用”态，不伪造完成。
+版本协商：握手交换协议版本与能力，不兼容即阻止，不静默降级。
+5. UI 页面与后端事件的对应关系
+每个界面元素都必须标注数据来源事件；任何 UI 状态都是事件的投影：
+
+界面	消费的事件	发出的命令
+左栏：项目/任务/阶段	task.created / stage.changed / state.changed	—
+中栏：群聊流	message.posted、tool.invoked / tool.result、evidence.added、error.reported	message.send、agent.mention
+介入控制	task.* 回执（UI 不本地置状态）	task.pause / resume / stop / reassign.supervisor / reassign.executor / re.plan
+审批卡片	approval.requested / resolved / expired	approval.decide（approve_once / approve_scope / reject / modify_retry / terminate）
+Diff 视图	file.change.proposed / file.applied	—
+终端输出	command.executed 输出流	—
+测试/证据	evidence.test、command.result	—
+恢复界面	checkpoint 摘要查询结果	恢复选择命令
+设置页	model.connection.tested（脱敏）	model.config.save、model.connection.test
+角色编辑	role.* 事件	role.upsert
+“已完成”徽标只能由 task.state 事件驱动，UI 禁止自行推导完成。
+
+6. Mock 服务如何支持前端并行开发
+Mock 服务属于我被允许修改的区域，设计原则：
+
+同协议入口：Mock 与真实 Python 服务使用完全相同的端点、信封和版本协商，前端用一个配置项切换，不写死分支。
+脚本化场景库：正常流式、中途断流、三种超时、429 限流、无效凭据、取消确认、审批“请求→决定→解决”闭环、手动触发断线、协议版本不匹配——每个场景可由前端测试按需触发。
+重放 M0 示例事件：直接回放 M0 的示例事件序列，保证三个 AI 看到的界面数据完全一致（这就是第 0 波完成门槛的落地点）。
+契约测试载体：M7 的界面契约测试直接对 Mock 跑，符合任务卡“先使用 M0 Mock 服务完成界面契约测试”的要求。
+红线：Mock 发出的审批事件只是数据，不是门禁；Mock 不实现任何真实安全规则，防止假门禁被误当真。
+7. 需要与 M0、M1、M3、M4、M5 对接的接口
+模块	我需要的接口
+M0	Command/Event 信封与序号规则；ModelRequest/ModelEvent、Error、ApprovalRequest/Decision、WriteLease、Task/Agent/Message 的字段定稿；协议版本与协商规则；Python↔TS 一致性验证方式
+M1	ModelGateway 的持有与调用约定（取消语义归属编排器还是网关）；命令处理注册表；换主管/换执行者的命令语义
+M3	凭据存取抽象（M2 取 Key 的唯一途径）；统一脱敏接口（M2 的错误与诊断出口必须过一遍）
+M4	无直接调用；但需要 file.change / command.result / evidence.* 事件的字段定义供 UI 消费
+M5	断线补发接口（last_event_seq → 事件重放）；恢复界面读 checkpoint 摘要的查询接口；设置/角色配置经 M5 边界读写（UI 只发命令）
+预提案的接口变更请求（等 M0 定稿后对照，缺则正式提交）：① 事件补发游标语义是否在 Event 信封内；② model.connection.tested 事件及其脱敏诊断字段；③ 审批“批准本阶段同类操作”的范围绑定字段（上轮已提出，直接阻塞 ApprovalRequest 定稿）。
+
+8. 断线、服务崩溃和协议不兼容时的界面行为
+断线：全局状态条显示“与本地服务断开，正在重连（第 N 次）”；输入区标注“待恢复”，不清理已显示内容（那些是已入库事实）；重连后按补发事件刷新，发现序号空洞时明确提示“部分事件缺失”；暂停等命令不假装成功，只标“提交中”直至回执事件到达。
+服务崩溃：与可重连断线区分开；显示“后端状态未知，以下为断开前最后已知状态”和最近稳定阶段；提供“重启本地服务”入口；重启后不自动重放任何命令、模型请求或审批，任务真实状态以 M5 恢复检查点为准，恢复选择权交给用户。
+协议不兼容：握手失败即进入阻止页，展示双方版本、差异能力和升级指引；不提供“忽略继续”；禁止进入任务界面，防止旧字段被静默误用。
+通用原则：这类界面状态本身就是对真实通道状态的反映，绝不显示“完成”。
+9. 最容易发生的前后端不一致问题
+按我判断的风险从高到低：
+
+“完成”三义：UI 渲染完成 ≠ 编排阶段完成 ≠ 磁盘与测试真实完成。必须单一事实来源（task.state 事件），这也是职责书第 10 条的直接落点。
+审批状态漂移：卡片还亮着，但后端已过期、被撤销，或经换主管/任务终止在别处被解决。需要 approval.resolved/expired 对所有解决路径可靠广播，UI 订阅全部路径。
+流式中断的半消息：UI 已渲染的 delta 与后端入库记录不一致；或取消后缓存中的尾部 delta 又冒出来。取消事件后必须严格停止渲染。
+命令假成功：断线时 UI 乐观更新了状态但命令未送达。对策：所有命令只标“提交中”，回执事件到达才变状态。
+重连补发重复渲染：缺 seq 去重导致消息重复或乱序；UI 侧按 event_id/seq 幂等。
+脱敏往返污染：设置页显示掩码，用户保存时把 sk-**** 当真值写回覆盖真实 Key。需要“掩码未修改则不更新凭据”的约定——这是接口语义，我会向 M3/M5 提交变更请求。
+字段静默漂移：TS 类型手写、Python 端先行改动。用 M0 的 schema 一致性验证兜底，前端绝不手写字段名。
+本轮交付说明：零代码、零文件改动、无临时残留；本文全部为设计提案，其中第 2、3、4 节及第 7 节末尾三项构成对未来 M0 的接口变更请求素材，待 M0 可评审版本出来后正式提交对照。无需同步文档（两份方案仍处于待你审阅状态，本轮不改动任何协议）。我未宣布任何容错或一致性验证通过——那些要等真实测试证据。

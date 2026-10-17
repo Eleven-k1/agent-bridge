@@ -1,0 +1,256 @@
+# 《M0 公共协议与数据契约 v0.5.1》
+
+状态：最终版，已经用户确认，作为第一版开发的公共契约基线。
+
+本文件定义 M0 的当前公共语义、模块边界和跨模块互操作要求。实施已获用户授权；后续不再等待 Claude 或 Zcode 做最终接口确认。如实现发现真实协议阻塞，必须通过接口变更单提交事实与影响，不得由任一模块自行改变公共语义。
+
+## 1. 最终规则摘要
+
+1. 模块调用关系包含 `M2 -> M6` 和 `M6 -> M7` 的临时模型流式帧转发。
+2. 临时模型流式帧不属于正式事件，不拥有任务全局序号，不改变任务状态。
+3. 正式消息内容和最终状态通过 M5 持久化事件恢复。
+4. 公共作用域只有三类：`TASK`、`WORKSPACE`、`LOCAL_CONFIG`。
+5. 每条命令和正式事件必须有明确 `scope_type` 与 `scope_id`，或等价无歧义结构。
+6. 模型连接、全局角色和软件设置可以属于 `LOCAL_CONFIG`，不强制要求 `workspace_identity`。
+7. 无 Task 的项目副作用必须拒绝；本地配置、模型连接配置和角色管理允许无 Task，但只能调用对应配置服务。
+8. 无 Task 命令由应用命令路由器或等价公共端口分发，M6 不解释业务命令。
+9. 任务命令转交 M1，模型连接命令转交 M2 相关配置服务，角色和本地设置命令转交对应配置服务。
+10. Stop 后保留修改时，结果不得使用其他模糊的结束值。
+11. Stop 后选择保留修改：`final_outcome=CANCELLED`。
+12. Stop 后恢复全部成功：`final_outcome=CANCELLED`。
+13. Stop 后稍后处理：`final_outcome=OPEN`。
+14. 正常完成但未提交才使用 `COMPLETED_UNCOMMITTED`。
+15. 恢复部分失败必须进入 `RECOVERY_REQUIRED`。
+
+## 2. Scope 作用域
+
+公共作用域只有三类：
+
+TASK
+WORKSPACE
+LOCAL_CONFIG
+TASK 绑定 task_id 和 run_id，用于任务编排、模型协作、审批、工具、写入、验证、报告和 Git 提交流程。
+WORKSPACE 绑定 workspace_identity，用于工作区只读查询、文件树、Git 状态、Diff 等不产生项目副作用的工作区级事实。
+LOCAL_CONFIG 绑定本地配置作用域，用于模型连接配置、连接测试、全局角色、软件设置等不依赖具体项目工作区的本地配置事实。
+模型连接、全局角色和软件设置可以属于 LOCAL_CONFIG，不强制要求 workspace_identity。
+无 Task 的项目文件写入、Shell、Git 写入、快照恢复、项目外访问和敏感发送必须拒绝。
+本地软件配置、模型连接配置和角色管理允许无 Task，但只能调用对应配置服务，不能获得项目文件、Shell、Git 或 WriteLease 权限。
+3. 命令与正式事件信封
+任务命令使用 TASK 作用域。
+工作区级命令使用 WORKSPACE 作用域。
+本地配置命令使用 LOCAL_CONFIG 作用域。
+命令必须包含：
+protocol_version
+scope_type
+scope_id
+command_id
+command_idempotency_key
+command_request_digest
+issuer
+command_type
+payload
+issued_at
+TASK 命令还必须包含：
+task_id
+run_id
+WORKSPACE 命令必须包含：
+workspace_identity
+LOCAL_CONFIG 命令不要求 workspace_identity。
+正式事件必须包含：
+protocol_version
+scope_type
+scope_id
+event_id
+operation_id
+event_deduplication_key
+causation_id
+actor
+event_type
+payload
+candidate_event_digest
+digest_algorithm_version
+occurred_at
+integrity_ref
+TASK 事件使用 task_event_sequence。
+WORKSPACE 事件使用 workspace_event_sequence。
+LOCAL_CONFIG 事件使用 local_config_event_sequence。
+三种序号各自只在本作用域事实流内排序，互不替代。具体序号存储实现由实施方决定。
+4. 工作区级与本地配置级事件
+WorkspaceEventEnvelope 用于工作区级事实：
+protocol_version
+scope_type=WORKSPACE
+scope_id
+workspace_event_id
+workspace_identity
+workspace_event_sequence
+operation_id
+event_deduplication_key
+causation_id
+actor
+event_type
+payload
+candidate_event_digest
+digest_algorithm_version
+occurred_at
+integrity_ref
+LocalConfigEventEnvelope 用于本地配置事实：
+protocol_version
+scope_type=LOCAL_CONFIG
+scope_id
+local_config_event_id
+local_config_event_sequence
+operation_id
+event_deduplication_key
+causation_id
+actor
+event_type
+payload
+candidate_event_digest
+digest_algorithm_version
+occurred_at
+integrity_ref
+WORKSPACE 和 LOCAL_CONFIG 事件同样必须先持久化、后发布。
+M6 只能发布已经由持久化入口确认的正式事件。
+5. 无 Task 命令处理责任
+命令链为：
+M7 提交 CommandEnvelope
+-> M6 鉴权、传输校验、基础格式校验
+-> 持久化命令入口登记或查询幂等键
+-> 应用命令路由器或等价公共端口按 scope_type 分发
+-> TASK 命令转交 M1
+-> 模型连接命令转交 M2 相关配置服务
+-> 角色和本地设置命令转交对应配置服务
+-> 责任模块产生 CandidateEvent
+-> M5 原子持久化正式事件
+-> M6 发布正式事件
+-> M7 投影界面状态
+M6 只做鉴权、传输校验、基础格式校验和转发。
+M6 不解释、不执行、不完成任务、模型配置、角色或本地设置等业务命令。
+具体路由框架、代码结构和服务划分由实施方决定。
+6. 模型流式帧与正式事件
+MODEL_DELTA 是实时传输帧，不是正式 EventEnvelope。
+它不拥有 task_event_sequence，不改变任务状态，也不能作为恢复状态的唯一依据。
+M2 可以向 M6 发送临时模型流式帧：
+scope_type=TASK
+task_id
+run_id
+operation_id
+model_fragment_sequence
+frame_type
+content_delta_ref
+received_at
+M6 可以将临时模型流式帧转发给 M7。
+调用关系：
+M2 -> M6: 临时模型流式帧
+M6 -> M7: 转发临时模型流式帧
+临时帧类型至少包括：
+MODEL_STREAM_STARTED_FRAME
+MODEL_DELTA_FRAME
+MODEL_STREAM_KEEPALIVE_FRAME
+MODEL_STREAM_END_FRAME
+公共语义：
+临时帧不属于正式事件。
+临时帧不拥有任务全局序号。
+临时帧不改变任务状态。
+临时帧仅用于 UI 即时显示。
+已收到内容必须保存为可引用内容块，或通过正式事件引用。
+正式消息内容和最终状态必须通过 M5 持久化事件恢复。
+断线重连后，系统必须能补发正式事件；临时帧是否补发由实施方决定。
+取消确认后，任何后续 MODEL_DELTA_FRAME 不得作为有效业务增量进入消息内容，只能作为诊断或丢弃处理。
+模型正式事件包括：
+MODEL_OPERATION_PLANNED
+MODEL_OPERATION_STARTED
+MODEL_CONTENT_CHUNK_RECORDED
+MODEL_OPERATION_COMPLETED
+MODEL_OPERATION_FAILED
+MODEL_OPERATION_CANCEL_REQUESTED
+MODEL_OPERATION_CANCELLED
+MODEL_OPERATION_RESULT_UNKNOWN
+生命周期、内容块记录和最终结果必须进入正式事件。
+7. 模块调用关系勘误
+修订后的相关调用关系：
+M7 -> M6: 提交命令、订阅正式事件、确认最后接收序号
+M6 -> 持久化命令入口: 登记或查询命令幂等结果
+M6 -> 应用命令路由器或等价端口: 转发已鉴权和基础校验通过的命令
+应用命令路由器 -> M1: 转交 TASK 任务命令
+应用命令路由器 -> M2 配置服务: 转交模型连接、连接测试和模型配置命令
+应用命令路由器 -> 角色/设置配置服务: 转交角色管理和本地软件设置命令
+M1 -> M2: 模型操作、取消、能力查询、上下文发送
+M2 -> M6: 发送带 operation_id 和 model_fragment_sequence 的临时模型流式帧
+M6 -> M7: 转发临时模型流式帧；发布正式事件和连接状态
+M2 -> M3/凭据服务: 请求一次受控短生命周期凭据使用
+M1 -> M3: 策略评估、审批、脱敏、租约申请
+M4 -> M3/权威端: 执行前二次校验审批、路径、哈希、风险、租约
+M1 -> M4: 工具请求、取消、事实核验
+M1/M2/M3/M4 -> M5: 提交候选事件
+M5 -> M6: 发布已持久化正式事件，支持补发
+M4 -> M5: 通过内部受控通道保存快照、输出和内部内容，不得修改正式审计记录
+M7 不得直接调用 M1、M2、M3、M4、M5。
+8. Stop 后最终结果语义
+Stop 后三种用户处置语义：
+用户选择	lifecycle	final_outcome	语义
+保留修改	TERMINATED	CANCELLED	停止任务，不恢复文件；文件修改是否保留由 workspace_change_state 和最终报告表达
+执行恢复且全部成功	TERMINATED	CANCELLED	任务停止，恢复结果已由 M4 事实确认
+稍后处理	AWAITING_DISPOSITION	OPEN	存在未处置修改，只允许只读、导出、保留或恢复
+
+
+正常完成但未提交才使用：
+COMPLETED_UNCOMMITTED
+恢复部分失败时：
+不得进入 TERMINATED；
+必须进入 RECOVERY_REQUIRED；
+建立或保持 RECOVERY_DECISION blocker；
+记录已恢复项、未恢复项、失败原因和下一步用户决定需求。
+9. 终止状态不变量
+当 lifecycle=TERMINATED 时，必须同时满足：
+不存在 OPEN blocker；
+不存在有效 WriteLease；
+不存在可继续消费的 ApprovalTicket；
+不存在未处理的模型、工具或审批操作；
+未完成审批必须已经失效、解决或进入恢复记录；
+未完成操作必须已经完成、失败、取消或进入恢复记录；
+若存在结果未知或未对账副作用，不得进入 TERMINATED，必须进入 RECOVERY_REQUIRED；
+任务最终报告必须展示工作区修改状态、验证状态、未验证项、风险和 Git 提交状态。
+10. 契约测试补充
+MODEL_DELTA_FRAME 不拥有 task_event_sequence。
+M2 可以向 M6 发送临时模型帧，M6 可以转发给 M7。
+临时模型帧不属于正式事件，不改变任务状态。
+模型生命周期和最终结果必须产生正式事件。
+已收到模型内容可通过正式事件引用恢复。
+断线重连只保证补发正式事件，不依赖实时帧缓存。
+取消确认后到达的 delta 不得成为有效业务内容。
+工作区级事件必须先持久化后发布。
+本地配置事件必须先持久化后发布。
+LOCAL_CONFIG 命令不得强制要求 workspace_identity。
+无 Task 的项目文件写入、Shell、Git 写入、快照恢复、项目外访问和敏感发送必须拒绝。
+无 Task 的本地配置和角色管理只能调用对应配置服务。
+M6 不得解释或执行业务命令。
+TERMINATED 状态下存在 OPEN blocker 必须判为协议错误。
+TERMINATED 状态下存在有效 WriteLease 必须判为协议错误。
+TERMINATED 状态下存在可消费审批票据必须判为协议错误。
+Stop 后保留修改时 final_outcome=CANCELLED。
+Stop 后恢复全部成功时 final_outcome=CANCELLED。
+Stop 后稍后处理时 final_outcome=OPEN。
+正常完成但未提交才使用 COMPLETED_UNCOMMITTED。
+Stop 后恢复部分失败必须进入 RECOVERY_REQUIRED。
+工作区事件和本地配置事件补发出现缺口时必须报告。
+11. 公共语义状态
+本契约已经用户确认，不存在阻止开始实现的已知公共语义问题。
+Claude 和 Zcode 的后续意见可作为实现审查输入，但不是开工或契约生效的前置条件。
+12. M3、M4、M5 实现兼容性检查
+M3、M4、M5 实现和集成时必须检查：
+TASK、WORKSPACE、LOCAL_CONFIG 三类作用域是否与 M5 持久化事实边界兼容。
+WorkspaceEventEnvelope 和 LocalConfigEventEnvelope 是否能满足先持久化、后发布。
+无 Task 的项目文件写入、Shell、Git 写入、快照恢复、项目外访问和敏感发送是否能被 M3/M4 拒绝。
+本地配置、模型连接配置和角色管理无 Task 时不会获得项目文件、Shell、Git 或 WriteLease 权限。
+TERMINATED 状态不变量是否能被 M3/M4/M5 检查或支持。
+Stop 后保留修改、恢复成功、稍后处理、恢复部分失败的结果语义是否与 M3/M4/M5 恢复接口兼容。
+13. M2、M6、M7 实现兼容性检查
+M2、M6、M7 实现和集成时必须检查：
+M2 能向 M6 发送带 operation_id 和 model_fragment_sequence 的临时模型流式帧。
+M6 能向 M7 转发临时模型流式帧，但不把它们当作正式事件。
+M7 不依赖临时帧恢复最终消息和任务状态。
+正式消息内容和最终状态能通过 M5 持久化事件恢复。
+M6 能按 TASK、WORKSPACE、LOCAL_CONFIG 三类作用域转发命令。
+M6 不解释或执行业务命令，只转交给应用命令路由器或等价公共端口。
+模型连接、角色和本地设置命令允许无 Task，但不会获得项目文件、Shell、Git 或 WriteLease 权限。

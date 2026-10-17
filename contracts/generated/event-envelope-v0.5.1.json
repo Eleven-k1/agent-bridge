@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope_type": {
+            "const": "TASK"
+          }
+        },
+        "required": [
+          "scope_type"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "local_config_event_sequence"
+              ]
+            },
+            {
+              "required": [
+                "workspace_event_sequence"
+              ]
+            }
+          ]
+        },
+        "required": [
+          "task_id",
+          "run_id",
+          "task_event_sequence"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope_type": {
+            "const": "WORKSPACE"
+          }
+        },
+        "required": [
+          "scope_type"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "local_config_event_sequence"
+              ]
+            },
+            {
+              "required": [
+                "task_event_sequence"
+              ]
+            }
+          ]
+        },
+        "required": [
+          "workspace_identity",
+          "workspace_event_sequence"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope_type": {
+            "const": "LOCAL_CONFIG"
+          }
+        },
+        "required": [
+          "scope_type"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "task_event_sequence"
+              ]
+            },
+            {
+              "required": [
+                "workspace_event_sequence"
+              ]
+            }
+          ]
+        },
+        "required": [
+          "local_config_event_sequence"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "actor": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "candidate_event_digest": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "causation_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "digest_algorithm_version": {
+      "const": "sha256-canonical-json-v1",
+      "type": "string"
+    },
+    "event_deduplication_key": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "event_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "event_type": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "integrity_ref": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "local_config_event_sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "occurred_at": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "operation_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "protocol_version": {
+      "const": "0.5.1",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "scope_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "scope_type": {
+      "enum": [
+        "TASK",
+        "WORKSPACE",
+        "LOCAL_CONFIG"
+      ],
+      "type": "string"
+    },
+    "task_event_sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "workspace_event_sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "workspace_identity": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "scope_type",
+    "scope_id",
+    "event_id",
+    "operation_id",
+    "event_deduplication_key",
+    "causation_id",
+    "actor",
+    "event_type",
+    "payload",
+    "candidate_event_digest",
+    "digest_algorithm_version",
+    "occurred_at",
+    "integrity_ref"
+  ],
+  "title": "EventEnvelope",
+  "type": "object"
+}

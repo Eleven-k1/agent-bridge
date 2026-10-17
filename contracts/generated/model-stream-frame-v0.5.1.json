@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "content_delta_ref": {
+      "type": "string"
+    },
+    "frame_type": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "model_fragment_sequence": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "operation_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "received_at": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "scope_type": {
+      "const": "TASK",
+      "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "scope_type",
+    "task_id",
+    "run_id",
+    "operation_id",
+    "model_fragment_sequence",
+    "frame_type",
+    "content_delta_ref",
+    "received_at"
+  ],
+  "title": "ModelStreamFrame",
+  "type": "object"
+}

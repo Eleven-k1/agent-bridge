@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope_type": {
+            "const": "TASK"
+          }
+        },
+        "required": [
+          "scope_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "task_id",
+          "run_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope_type": {
+            "const": "WORKSPACE"
+          }
+        },
+        "required": [
+          "scope_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "workspace_identity"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope_type": {
+            "const": "LOCAL_CONFIG"
+          }
+        },
+        "required": [
+          "scope_type"
+        ]
+      },
+      "then": {
+        "required": []
+      }
+    }
+  ],
+  "properties": {
+    "command_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "command_idempotency_key": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "command_request_digest": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "command_type": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "issued_at": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "issuer": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "protocol_version": {
+      "const": "0.5.1",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "scope_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "scope_type": {
+      "enum": [
+        "TASK",
+        "WORKSPACE",
+        "LOCAL_CONFIG"
+      ],
+      "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "workspace_identity": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol_version",
+    "scope_type",
+    "scope_id",
+    "command_id",
+    "command_idempotency_key",
+    "command_request_digest",
+    "issuer",
+    "command_type",
+    "payload",
+    "issued_at"
+  ],
+  "title": "CommandEnvelope",
+  "type": "object"
+}
