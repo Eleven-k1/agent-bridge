@@ -4,6 +4,8 @@
 
 ## 启动入口
 
+桌面端可输入自定义任务内容，选择已发现的模型或手动填写模型名后提交真实任务。真实请求能否完成还取决于本机 Relay 的认证配置；当前状态见 `docs/current-status.md`。
+
 - Web UI：双击 `web-ui/start-web.vbs`，访问 `http://127.0.0.1:5173`；双击 `web-ui/stop-web.vbs` 停止。启动脚本会复用已经健康的本项目服务。
 - 桌面端：在 `desktop/` 执行 `npm.cmd install` 和 `npm.cmd run dev`。桌面端主进程会启动 `python -m agent_bridge.app`，需要 Python 后端环境位于 PATH 或使用项目虚拟环境。
 - 后端：在项目根目录执行 `backend\.venv\Scripts\python.exe -m agent_bridge.app`。

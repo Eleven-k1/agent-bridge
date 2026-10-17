@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, act } from "@testing-library/react";
+import { cleanup, render, screen, act, fireEvent } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BridgeApi } from "../src/renderer/bridge-api";
@@ -35,8 +35,19 @@ describe("real provider controls", () => {
     await act(async () => { screen.getByRole("button", { name: /refresh local models/i }).click(); });
     act(() => emitMessage({ type: "event", event: { event_type: "LOCAL_MODELS_LISTED", payload: { models: ["local-model"], status: "available" } } }));
     expect(screen.getByRole("option", { name: "local-model" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Task request"), { target: { value: "Explain the current project architecture." } });
     await act(async () => { screen.getByRole("button", { name: /run real task/i }).click(); });
-    expect(bridge.runRealTask).toHaveBeenCalledWith("local-model", expect.any(Array), true);
+    expect(bridge.runRealTask).toHaveBeenCalledWith("local-model", [{ role: "user", content: "Explain the current project architecture." }], true);
+  });
+
+  it("requires a non-empty task request before submission", async () => {
+    const { default: App } = await import("../src/renderer/App");
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Manual model"), { target: { value: "local-model" } });
+    const runButton = screen.getByRole("button", { name: /run real task/i });
+    expect(runButton.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByLabelText("Task request"), { target: { value: "   " } });
+    expect(runButton.hasAttribute("disabled")).toBe(true);
   });
 
   it("allows manual model fallback and displays provider errors", async () => {

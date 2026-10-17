@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { createTaskStore, type TaskState } from "./task-store";
 
 /**
@@ -27,6 +27,7 @@ const TERMINAL_LABELS: Record<NonNullable<TaskState["terminal"]>, string> = {
 
 export default function App() {
   const state = useSyncExternalStore(store.subscribe, store.getState);
+  const [taskPrompt, setTaskPrompt] = useState("");
 
   useEffect(() => {
     const bridge = window.bridge;
@@ -57,10 +58,10 @@ export default function App() {
 
   const runRealTask = useCallback(async () => {
     const model = state.manualModel.trim() || state.selectedModel;
-    if (!model) return;
+    if (!model || !taskPrompt.trim()) return;
     store.markCommandPending();
-    await window.bridge?.runRealTask(model, [{ role: "user", content: "请简要介绍你自己。" }], true);
-  }, [state.manualModel, state.selectedModel]);
+    await window.bridge?.runRealTask(model, [{ role: "user", content: taskPrompt }], true);
+  }, [state.manualModel, state.selectedModel, taskPrompt]);
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 16, display: "grid", gap: 12 }}>
@@ -85,6 +86,20 @@ export default function App() {
         </span>
       </header>
 
+      <section>
+        <label style={{ display: "grid", gap: 6 }}>
+          Task request
+          <textarea
+            aria-label="Task request"
+            value={taskPrompt}
+            onChange={(event) => setTaskPrompt(event.target.value)}
+            rows={4}
+            placeholder="输入要发送给模型的任务内容"
+            style={{ boxSizing: "border-box", width: "100%", resize: "vertical", font: "inherit" }}
+          />
+        </label>
+      </section>
+
       <section style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button type="button" onClick={() => void runTask()} disabled={state.pendingCommand}>
           运行假任务
@@ -103,7 +118,7 @@ export default function App() {
           <option value="">Select model</option>
           {state.availableModels.map((model) => <option key={model} value={model}>{model}</option>)}
         </select>
-        <button type="button" onClick={() => void runRealTask()} disabled={state.pendingCommand || !(state.manualModel.trim() || state.selectedModel)}>
+        <button type="button" onClick={() => void runRealTask()} disabled={state.pendingCommand || !(state.manualModel.trim() || state.selectedModel) || !taskPrompt.trim()}>
           Run real task
         </button>
         <span style={{ fontSize: 12, color: "#666" }}>
