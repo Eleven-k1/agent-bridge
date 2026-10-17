@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { createTaskStore, type TaskState } from "./task-store";
+import "./App.css";
 
 /**
  * 最小工作台（Fake 闭环）：
@@ -23,6 +24,12 @@ const TERMINAL_LABELS: Record<NonNullable<TaskState["terminal"]>, string> = {
   COMPLETED: "模型操作完成（正式事件确认）",
   FAILED: "模型操作失败（正式事件确认）",
   CANCELLED: "模型操作已取消（正式事件确认）",
+};
+
+const TERMINAL_TONES: Record<NonNullable<TaskState["terminal"]>, string> = {
+  COMPLETED: "success",
+  FAILED: "danger",
+  CANCELLED: "warning",
 };
 
 export default function App() {
@@ -64,112 +71,145 @@ export default function App() {
   }, [state.manualModel, state.selectedModel, taskPrompt]);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 16, display: "grid", gap: 12 }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          borderBottom: "1px solid #d0d0d0",
-          paddingBottom: 8,
-        }}
-      >
-        <h1 style={{ fontSize: 16, margin: 0 }}>多智能体协作桥梁 · Fake 闭环</h1>
-        <span
-          style={{
-            fontSize: 13,
-            color: state.connection === "connected" ? "#0a7d32" : "#a05a00",
-          }}
-          data-testid="connection-label"
-        >
+    <main className="app-shell" data-testid="app-shell">
+      <div className="ambient-glow ambient-glow-one" aria-hidden="true" />
+      <div className="ambient-glow ambient-glow-two" aria-hidden="true" />
+
+      <header className="topbar">
+        <div className="brand-lockup">
+          <div className="brand-mark" aria-hidden="true">AB</div>
+          <div>
+            <p className="eyebrow">LOCAL AGENT WORKBENCH</p>
+            <h1>多智能体协作桥梁</h1>
+            <p className="brand-subtitle">安全连接本地服务，观察每一次模型执行。</p>
+          </div>
+        </div>
+        <div className={`status-pill status-${state.connection}`} data-testid="connection-label" role="status">
+          <span className="status-dot" aria-hidden="true" />
           {CONNECTION_LABELS[state.connection]}
-        </span>
+        </div>
       </header>
 
-      <section>
-        <label style={{ display: "grid", gap: 6 }}>
-          Task request
-          <textarea
-            aria-label="Task request"
-            value={taskPrompt}
-            onChange={(event) => setTaskPrompt(event.target.value)}
-            rows={4}
-            placeholder="输入要发送给模型的任务内容"
-            style={{ boxSizing: "border-box", width: "100%", resize: "vertical", font: "inherit" }}
-          />
-        </label>
+      <section className="workspace-intro" aria-labelledby="workspace-title">
+        <div>
+          <p className="eyebrow">M7 WORKSPACE</p>
+          <h2 id="workspace-title">把任务交给本地模型</h2>
+          <p className="intro-copy">输入目标，选择模型，实时观察临时流帧与正式事件的分层结果。</p>
+        </div>
+        <div className="intro-meta">
+          <span className="meta-label">TRANSPORT</span>
+          <strong>127.0.0.1 · NDJSON</strong>
+        </div>
       </section>
 
-      <section style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button type="button" onClick={() => void runTask()} disabled={state.pendingCommand}>
-          运行假任务
-        </button>
-        <button type="button" onClick={() => void runTool()} disabled={state.pendingCommand}>
-          运行假工具
-        </button>
-        <button type="button" onClick={() => void refreshModels()} disabled={state.pendingCommand}>
-          Refresh local models
-        </button>
-        <label>
-          Manual model
-          <input aria-label="Manual model" value={state.manualModel} onChange={(event) => store.setManualModel(event.target.value)} />
-        </label>
-        <select aria-label="Available models" value={state.selectedModel} onChange={(event) => store.setSelectedModel(event.target.value)}>
-          <option value="">Select model</option>
-          {state.availableModels.map((model) => <option key={model} value={model}>{model}</option>)}
-        </select>
-        <button type="button" onClick={() => void runRealTask()} disabled={state.pendingCommand || !(state.manualModel.trim() || state.selectedModel) || !taskPrompt.trim()}>
-          Run real task
-        </button>
-        <span style={{ fontSize: 12, color: "#666" }}>
-          {state.pendingCommand ? "命令提交中…" : (state.lastCommandStatus ?? "尚未提交命令")}
-        </span>
-        {state.terminal && (
-          <strong style={{ fontSize: 13 }} data-testid="terminal-label">
-            {TERMINAL_LABELS[state.terminal]}
-          </strong>
-        )}
-        {state.lastEventError && (
-          <span style={{ fontSize: 12, color: "#b00020" }}>{state.lastEventError}</span>
-        )}
-        {state.modelDiscoveryStatus === "unavailable" && <span style={{ fontSize: 12, color: "#b00020" }}>local relay unavailable</span>}
-      </section>
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-          minHeight: 240,
-        }}
-      >
-        <div style={{ border: "1px solid #d0d0d0", borderRadius: 6, padding: 10 }}>
-          <h2 style={{ fontSize: 13, margin: "0 0 8px", color: "#666" }}>
-            临时流式层（仅 UI 即时显示 · 帧不补发）
-          </h2>
-          <pre
-            data-testid="streamed-text"
-            style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit", minHeight: 120 }}
-          >
-            {state.streamedText || "（等待模型流式帧…）"}
-          </pre>
-          <footer style={{ fontSize: 12, color: "#888" }}>已收帧：{state.receivedFrames}</footer>
+      <section className="panel task-card" data-testid="task-card" aria-labelledby="task-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">PRIMARY WORKFLOW</p>
+            <h2 id="task-title">真实任务</h2>
+            <p className="section-copy">任务内容会作为用户消息原样发送给选定的模型。</p>
+          </div>
+          <span className="scope-chip">LOCAL ONLY</span>
         </div>
 
-        <div style={{ border: "1px solid #d0d0d0", borderRadius: 6, padding: 10 }}>
-          <h2 style={{ fontSize: 13, margin: "0 0 8px", color: "#666" }}>
-            正式事件层（持久化事实 · 恢复依据）
-          </h2>
-          <pre
-            data-testid="recorded-text"
-            style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit", minHeight: 120 }}
-          >
-            {state.recordedText || "（等待正式事件…）"}
-          </pre>
-          <footer style={{ fontSize: 12, color: "#888" }}>
-            已收事件：{state.receivedEvents}
-            {state.lastEventType ? ` · 最近：${state.lastEventType}` : ""}
-          </footer>
+        <label className="field-label" htmlFor="task-request">
+          <span>Task request</span>
+          <span className="field-hint">必填</span>
+        </label>
+        <textarea
+          id="task-request"
+          className="task-input"
+          aria-label="Task request"
+          value={taskPrompt}
+          onChange={(event) => setTaskPrompt(event.target.value)}
+          rows={5}
+          placeholder="描述你希望模型完成的任务，例如：总结当前项目架构并指出下一步风险。"
+        />
+
+        <div className="model-controls">
+          <label className="field-group" htmlFor="available-models">
+            <span className="field-label">Available model</span>
+            <select id="available-models" className="control" aria-label="Available models" value={state.selectedModel} onChange={(event) => store.setSelectedModel(event.target.value)}>
+              <option value="">Select model</option>
+              {state.availableModels.map((model) => <option key={model} value={model}>{model}</option>)}
+            </select>
+          </label>
+          <label className="field-group" htmlFor="manual-model">
+            <span className="field-label">Manual model</span>
+            <input id="manual-model" className="control" aria-label="Manual model" value={state.manualModel} onChange={(event) => store.setManualModel(event.target.value)} placeholder="可选回退名称" />
+          </label>
+          <button className="button button-secondary refresh-button" type="button" onClick={() => void refreshModels()} disabled={state.pendingCommand}>
+            <span aria-hidden="true">↻</span>
+            Refresh local models
+          </button>
+          <button className="button button-primary" type="button" onClick={() => void runRealTask()} disabled={state.pendingCommand || !(state.manualModel.trim() || state.selectedModel) || !taskPrompt.trim()}>
+            Run real task
+            <span className="button-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+
+        <div className="feedback-row" aria-live="polite">
+          <span className="command-status">
+            <span className={`status-dot ${state.pendingCommand ? "status-dot-pending" : ""}`} aria-hidden="true" />
+            {state.pendingCommand ? "命令提交中…" : (state.lastCommandStatus ?? "尚未提交命令")}
+          </span>
+          {state.terminal && (
+            <strong className={`feedback-item feedback-${TERMINAL_TONES[state.terminal]}`} data-testid="terminal-label">
+              {TERMINAL_LABELS[state.terminal]}
+            </strong>
+          )}
+          {state.lastEventError && <span className="feedback-item feedback-danger">{state.lastEventError}</span>}
+          {state.modelDiscoveryStatus === "unavailable" && <span className="feedback-item feedback-danger">local relay unavailable</span>}
+        </div>
+      </section>
+
+      <section className="demo-actions" aria-labelledby="demo-title">
+        <div>
+          <p className="eyebrow">DEVELOPER SANDBOX</p>
+          <h2 id="demo-title">Fake 闭环</h2>
+        </div>
+        <div className="demo-buttons">
+          <button className="button button-ghost" type="button" onClick={() => void runTask()} disabled={state.pendingCommand}>运行假任务</button>
+          <button className="button button-ghost" type="button" onClick={() => void runTool()} disabled={state.pendingCommand}>运行假工具</button>
+        </div>
+      </section>
+
+      <section className="results-section" aria-labelledby="results-title">
+        <div className="results-heading">
+          <div>
+            <p className="eyebrow">OBSERVABILITY</p>
+            <h2 id="results-title">执行结果</h2>
+          </div>
+          <span className="results-note">帧即时显示 · 事件可恢复</span>
+        </div>
+        <div className="result-grid">
+          <div className="panel result-card" data-testid="stream-card">
+            <div className="card-heading">
+              <div>
+                <span className="card-kicker">LIVE STREAM</span>
+                <h3>临时流式层</h3>
+              </div>
+              <span className="count-badge">{state.receivedFrames} 帧</span>
+            </div>
+            <p className="card-description">仅用于即时显示，重连后不会补发。</p>
+            <pre className="result-content" data-testid="streamed-text">{state.streamedText || "（等待模型流式帧…）"}</pre>
+            <footer className="result-footer">MODEL_DELTA_FRAME</footer>
+          </div>
+
+          <div className="panel result-card" data-testid="recorded-card">
+            <div className="card-heading">
+              <div>
+                <span className="card-kicker card-kicker-accent">PERSISTED EVENTS</span>
+                <h3>正式事件层</h3>
+              </div>
+              <span className="count-badge count-badge-accent">{state.receivedEvents} 事件</span>
+            </div>
+            <p className="card-description">持久化事实，任务恢复与终态以此为准。</p>
+            <pre className="result-content" data-testid="recorded-text">{state.recordedText || "（等待正式事件…）"}</pre>
+            <footer className="result-footer">
+              {state.lastEventType ? `最近事件 · ${state.lastEventType}` : "等待事件确认"}
+            </footer>
+          </div>
         </div>
       </section>
     </main>

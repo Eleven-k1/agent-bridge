@@ -84,6 +84,10 @@ describe("App 工作台渲染", () => {
     const App = await loadApp();
 
     render(<App />);
+    expect(screen.getByTestId("app-shell").classList.contains("app-shell")).toBe(true);
+    expect(screen.getByTestId("task-card").classList.contains("task-card")).toBe(true);
+    expect(screen.getByTestId("stream-card").classList.contains("result-card")).toBe(true);
+    expect(screen.getByTestId("recorded-card").classList.contains("result-card")).toBe(true);
     expect(screen.getByTestId("connection-label").textContent).toContain("未连接本地服务");
 
     act(() => emitState("connected"));
