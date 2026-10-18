@@ -19,12 +19,39 @@ def test_command_whitelist_and_server_side_envelope():
     assert WebApp._build_command({"type": "command", "command_type": "FAKE_TOOL_RUN", "payload": {"target_path": "evil.txt"}})["payload"]["target_path"] == "fake-output.txt"
 
 
-def test_health_and_static_root():
+def test_resume_accepts_only_supported_scopes_and_non_negative_cursors():
+    assert WebApp._build_resume({"type": "resume", "scope_type": "TASK", "scope_id": "task-1", "last_event_seq": 7}) == {
+        "type": "resume", "scope_type": "TASK", "scope_id": "task-1", "last_event_seq": 7,
+    }
+    assert WebApp._build_resume({"type": "resume", "scope_type": "LOCAL_CONFIG", "scope_id": "local-config", "last_event_seq": 0}) == {
+        "type": "resume", "scope_type": "LOCAL_CONFIG", "scope_id": "local-config", "last_event_seq": 0,
+    }
+    assert WebApp._build_resume({"type": "resume", "scope_type": "WORKSPACE", "scope_id": "workspace", "last_event_seq": 0}) is None
+    assert WebApp._build_resume({"type": "resume", "scope_type": "TASK", "scope_id": "task-1", "last_event_seq": -1}) is None
+    assert WebApp._build_resume({"type": "resume", "scope_type": "TASK", "scope_id": "task-1", "last_event_seq": True}) is None
+
+
+def test_health_and_static_root(tmp_path):
     async def body():
-        app = WebApp(port=0)
+        (tmp_path / "index.html").write_text("<main>current web ui</main>", encoding="utf-8")
+        app = WebApp(port=0, static_dir=tmp_path)
         await app.start()
         port = app.bound_port
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        await writer.drain()
+        data = await reader.read()
+        assert b"200 OK" in data and b"Cache-Control: no-store" in data and b"current web ui" in data
+        writer.close(); await writer.wait_closed()
+        await app.aclose()
+    asyncio.run(body())
+
+
+def test_health_response():
+    async def body():
+        app = WebApp(port=0)
+        await app.start()
+        reader, writer = await asyncio.open_connection("127.0.0.1", app.bound_port)
         writer.write(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n")
         await writer.drain()
         data = await reader.read()

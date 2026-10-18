@@ -121,7 +121,7 @@ class WebApp:
     @staticmethod
     async def _http_response(writer: asyncio.StreamWriter, status: int, body: bytes, content_type: str) -> None:
         reason = {200: "OK", 400: "Bad Request", 404: "Not Found", 405: "Method Not Allowed"}.get(status, "Error")
-        writer.write(f"HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
+        writer.write(f"HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nCache-Control: no-store\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
         await writer.drain()
 
     async def _handle_websocket(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, headers: dict[str, str]) -> None:
@@ -156,6 +156,13 @@ class WebApp:
                 except (ValueError, json.JSONDecodeError):
                     await self._ws_send(writer, {"type": "input_error", "error": "invalid json"})
                     continue
+                if isinstance(incoming, dict) and incoming.get("type") == "resume":
+                    resume = self._build_resume(incoming)
+                    if resume is None:
+                        await self._ws_send(writer, {"type": "input_error", "error": "invalid resume"})
+                        continue
+                    await session.send(resume)
+                    continue
                 command = self._build_command(incoming)
                 if command is None:
                     await self._ws_send(writer, {"type": "input_error", "error": "invalid command"})
@@ -166,6 +173,17 @@ class WebApp:
         finally:
             self._sessions.discard(session)
             await session.aclose()
+
+    @staticmethod
+    def _build_resume(incoming: Any) -> dict[str, Any] | None:
+        if not isinstance(incoming, dict) or incoming.get("type") != "resume":
+            return None
+        scope_type, scope_id, cursor = incoming.get("scope_type"), incoming.get("scope_id"), incoming.get("last_event_seq")
+        if scope_type not in {"TASK", "LOCAL_CONFIG"} or not isinstance(scope_id, str) or not scope_id.strip():
+            return None
+        if not isinstance(cursor, int) or isinstance(cursor, bool) or cursor < 0:
+            return None
+        return {"type": "resume", "scope_type": scope_type, "scope_id": scope_id.strip(), "last_event_seq": cursor}
 
     @staticmethod
     def _build_command(incoming: Any) -> dict[str, Any] | None:
