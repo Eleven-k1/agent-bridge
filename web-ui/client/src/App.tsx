@@ -24,6 +24,8 @@ type Wire = Record<string, unknown>;
 type Connection = "connecting" | "connected" | "reconnecting" | "disconnected" | "auth-failed";
 type Terminal = "COMPLETED" | "FAILED" | "CANCELLED";
 type EventRow = { id: string; type: string; detail: string };
+type LocalAgent = { provider_id: string; display_name: string; installed: boolean; adapted: boolean; supported_roles: string[]; diagnostic?: string };
+type CollaborationFact = { type: string; payload: Wire };
 
 const CONNECTION_LABELS: Record<Connection, string> = {
   connecting: "正在连接本地服务…",
@@ -76,6 +78,7 @@ function eventSummary(payload: Wire): string {
 
 export default function App() {
   const socketRef = useRef<WebSocket | null>(null);
+  const agentRunRef = useRef<{ taskId: string; runId: string } | null>(null);
   const cursorsRef = useRef<Record<string, number>>({ TASK: 0, LOCAL_CONFIG: 0 });
   const [connection, setConnection] = useState<Connection>("connecting");
   const [models, setModels] = useState<string[]>([]);
@@ -93,6 +96,18 @@ export default function App() {
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
   const [modelDiscoveryStatus, setModelDiscoveryStatus] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [agents, setAgents] = useState<LocalAgent[]>([]);
+  const [agentPrompt, setAgentPrompt] = useState("");
+  const [analysisProviders, setAnalysisProviders] = useState<string[]>(["codex", "claude-code"]);
+  const [coordinatorProvider, setCoordinatorProvider] = useState("codex");
+  const [reviewerProvider, setReviewerProvider] = useState("claude-code");
+  const [workspaceConsent, setWorkspaceConsent] = useState(false);
+  const [agentRun, setAgentRun] = useState<{ taskId: string; runId: string } | null>(null);
+  const [agentFacts, setAgentFacts] = useState<CollaborationFact[]>([]);
+  const [agentPlan, setAgentPlan] = useState<{ text: string; digest: string } | null>(null);
+  const [agentOutputs, setAgentOutputs] = useState<Record<string, { providerId: string; role: string; text: string }>>({});
+  const [agentDiff, setAgentDiff] = useState<{ text: string; branch?: string; worktree?: string; truncated?: boolean } | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
   const selectedModel = manualModel.trim() || model;
   const terminalTone = terminal ? TERMINAL_TONES[terminal] : null;
 
@@ -159,6 +174,18 @@ export default function App() {
       return;
     }
 
+    if (wire.type === "agent_frame") {
+      const frame = typeof wire.frame === "object" && wire.frame !== null ? wire.frame as Wire : {};
+      const payload = typeof wire.payload === "object" && wire.payload !== null ? wire.payload as Wire : {};
+      if (frame.frame_type !== "AGENT_OUTPUT_FRAME" || typeof frame.provider_id !== "string" || typeof payload.delta !== "string") return;
+      const activeRun = agentRunRef.current;
+      if (!activeRun || frame.run_id !== activeRun.runId || frame.task_id !== activeRun.taskId) return;
+      const role = typeof frame.role === "string" ? frame.role : "agent";
+      const outputId = `${frame.provider_id}:${role}`;
+      setAgentOutputs((current) => ({ ...current, [outputId]: { providerId: frame.provider_id as string, role, text: `${current[outputId]?.text ?? ""}${payload.delta as string}`.slice(-12000) } }));
+      return;
+    }
+
     if (wire.type === "event") {
       const event = typeof wire.event === "object" && wire.event !== null ? wire.event as Wire : {};
       const type = typeof event.event_type === "string" ? event.event_type : "";
@@ -179,6 +206,36 @@ export default function App() {
       setLastEventType(type);
       const detail = eventSummary(payload);
       setEvents((current) => [...current, { id: `${scopeType}:${scopeId}:${String(event[scope?.cursorField ?? ""] ?? current.length)}`, type, detail }].slice(-100));
+
+      if (type === "LOCAL_AGENTS_LISTED") {
+        const listed = Array.isArray(payload.agents) ? payload.agents.filter((item): item is LocalAgent => typeof item === "object" && item !== null && typeof (item as Wire).provider_id === "string") : [];
+        setAgents(listed);
+        return;
+      }
+
+      if (type.startsWith("AGENT_") && scopeType === "TASK") {
+        setPending(false);
+        const runId = typeof event.run_id === "string" ? event.run_id : "";
+        const taskId = typeof event.task_id === "string" ? event.task_id : scopeId;
+        if (runId) {
+          const activeRun = { taskId, runId };
+          agentRunRef.current = activeRun;
+          setAgentRun(activeRun);
+        }
+        setAgentFacts((current) => [...current, { type, payload }].slice(-100));
+        if (type === "AGENT_COLLABORATION_STARTED" || type === "AGENT_PLAN_APPROVED" || type === "AGENT_WRITER_STARTED" || type === "AGENT_REVIEW_COMPLETED") setAgentBusy(type !== "AGENT_REVIEW_COMPLETED");
+        if (["AGENT_COLLABORATION_COMPLETED", "AGENT_COLLABORATION_FAILED", "AGENT_COLLABORATION_CANCELLED"].includes(type)) setAgentBusy(false);
+        if (type === "AGENT_PLAN_READY" && typeof payload.plan === "string" && typeof payload.approval_digest === "string") setAgentPlan({ text: payload.plan, digest: payload.approval_digest });
+        if (type === "AGENT_WRITER_COMPLETED" && typeof payload.diff === "string") {
+          setAgentDiff({
+            text: payload.diff,
+            branch: typeof payload.branch === "string" ? payload.branch : undefined,
+            worktree: typeof payload.worktree_path === "string" ? payload.worktree_path : undefined,
+            truncated: payload.diff_truncated === true,
+          });
+        }
+        return;
+      }
 
       if (type === "LOCAL_MODELS_LISTED") {
         const listed = Array.isArray(payload.models) ? payload.models.filter((item): item is string => typeof item === "string") : [];
@@ -215,6 +272,7 @@ export default function App() {
       if (status === "ROUTER_ERROR" || status === "INVALID_COMMAND" || status === "IDEMPOTENCY_CONFLICT") {
         const errors = Array.isArray(wire.errors) ? wire.errors.filter((item): item is string => typeof item === "string") : [];
         setError(errors.join("; ") || status);
+        setAgentBusy(false);
       }
       return;
     }
@@ -244,6 +302,8 @@ export default function App() {
         setConnection("connecting");
         try { sendResume(socket); }
         catch (sendError) { setError(errorMessage(sendError)); }
+        try { socket.send(JSON.stringify({ type: "command", command_type: "LIST_LOCAL_AGENTS", payload: {} })); }
+        catch (sendError) { setError(errorMessage(sendError)); }
       };
       socket.onmessage = (message) => {
         if (disposed) return;
@@ -261,6 +321,7 @@ export default function App() {
         if (disposed) return;
         setConnection("reconnecting");
         setStreamedText("");
+        setAgentOutputs({});
         setPending(false);
         reconnectTimer = window.setTimeout(connect, retryDelay);
         retryDelay = Math.min(retryDelay * 2, 10000);
@@ -302,6 +363,28 @@ export default function App() {
   const refreshModels = () => {
     sendCommand("LIST_LOCAL_MODELS");
   };
+
+  const refreshAgents = () => sendCommand("LIST_LOCAL_AGENTS");
+  const availableFor = (role: string) => agents.filter((agent) => agent.installed && agent.adapted && agent.supported_roles.includes(role));
+  const startCollaboration = () => {
+    if (!agentPrompt.trim() || !workspaceConsent || analysisProviders.length < 2 || !coordinatorProvider || !reviewerProvider) return;
+    setAgentFacts([]);
+    setAgentPlan(null);
+    setAgentOutputs({});
+    setAgentDiff(null);
+    setAgentRun(null);
+    agentRunRef.current = null;
+    setAgentBusy(true);
+    sendCommand("START_AGENT_COLLABORATION", {
+      prompt: agentPrompt.trim(), analysis_provider_ids: analysisProviders,
+      coordinator_provider_id: coordinatorProvider, writer_provider_id: "codex",
+      reviewer_provider_id: reviewerProvider, acknowledge_workspace_access: true,
+    });
+  };
+  const approveAgentPlan = () => agentRun && agentPlan && sendCommand("APPROVE_AGENT_PLAN", { run_id: agentRun.runId, approval_digest: agentPlan.digest });
+  const cancelCollaboration = () => agentRun && sendCommand("CANCEL_AGENT_COLLABORATION", { run_id: agentRun.runId });
+  const planApproved = agentFacts.some((fact) => fact.type === "AGENT_PLAN_APPROVED");
+  const toggleAnalysisProvider = (providerId: string) => setAnalysisProviders((current) => current.includes(providerId) ? current.filter((id) => id !== providerId) : [...current, providerId]);
 
   const connectionStatus = connection === "connected" ? "online" : connection === "auth-failed" ? "offline" : "waiting";
   const activeModel = selectedModel || "未选择模型";
@@ -349,6 +432,33 @@ export default function App() {
             <textarea id="task-request" className="task-input" aria-label="Task request" value={taskPrompt} onChange={(event) => setTaskPrompt(event.target.value)} rows={5} placeholder="描述你希望模型完成的任务，例如：总结当前项目架构并指出下一步风险。" />
             <div className="composer-footer"><span className="composer-note"><Sparkles size={14} aria-hidden="true" /> Streaming enabled</span><button className="button button-primary" type="button" onClick={runRealTask} disabled={pending || !selectedModel || !taskPrompt.trim()}>Run real task<ArrowUpRight size={16} aria-hidden="true" /></button></div>
             <div className="feedback-row" aria-live="polite">{terminal && <strong className={`feedback-item feedback-${terminalTone}`} data-testid="terminal-label">{terminal === "COMPLETED" ? <CheckCircle2 size={14} aria-hidden="true" /> : <CircleAlert size={14} aria-hidden="true" />}{TERMINAL_LABELS[terminal]}</strong>}</div>
+          </section>
+
+          <section className="collaboration-workspace" aria-labelledby="collaboration-title">
+            <div className="task-card-heading"><div><div className="section-tag"><Activity size={13} aria-hidden="true" /> LOCAL CLI AGENTS</div><h2 id="collaboration-title">多 Agent 协作</h2></div><button className="button button-secondary" type="button" onClick={refreshAgents}><RefreshCw size={14} aria-hidden="true" />刷新库存</button></div>
+            <p className="collab-intro">Agent 由本机已安装并适配的 CLI 启动。先并行只读分析，再由协调 Agent 汇总方案；只有你批准后，Codex 才会在独立 Git worktree 写入，最后交给不同的只读 Agent 审查。</p>
+            <div className="provider-list" aria-label="本机 Agent 库存">
+              {agents.length === 0 && <p className="empty-agents">正在读取本机 CLI 库存…</p>}
+              {agents.map((agent) => {
+                const available = agent.installed && agent.adapted;
+                return <div className={`provider-row ${available ? "provider-ready" : "provider-unavailable"}`} key={agent.provider_id}>
+                  <span className="provider-indicator" aria-hidden="true" /><strong>{agent.display_name}</strong><span className="provider-status">{!agent.installed ? "未安装" : !agent.adapted ? "未适配" : "可用"}</span><small>{agent.diagnostic ?? ""}</small>
+                </div>;
+              })}
+            </div>
+            <label className="field-group" htmlFor="collaboration-task"><span className="field-label">协作任务</span><textarea aria-label="Collaboration task" id="collaboration-task" className="task-input" value={agentPrompt} onChange={(event) => setAgentPrompt(event.target.value)} rows={3} placeholder="描述需要多个本地编程 Agent 协作完成的任务" /></label>
+            <div className="collab-role-grid">
+              <fieldset className="role-fieldset"><legend>并行只读分析（至少选择两个）</legend>{availableFor("analysis").map((agent) => <label className="role-option" key={agent.provider_id}><input type="checkbox" checked={analysisProviders.includes(agent.provider_id)} onChange={() => toggleAnalysisProvider(agent.provider_id)} />{agent.display_name}</label>)}{availableFor("analysis").length < 2 && <small>需要至少两个已安装且已适配的分析 Agent</small>}</fieldset>
+              <label className="field-group"><span className="field-label">方案协调 Agent</span><select className="control" aria-label="方案协调 Agent" value={coordinatorProvider} onChange={(event) => setCoordinatorProvider(event.target.value)}>{availableFor("coordinator").filter((agent) => analysisProviders.includes(agent.provider_id)).map((agent) => <option value={agent.provider_id} key={agent.provider_id}>{agent.display_name}</option>)}</select></label>
+              <div className="writer-lock"><span className="field-label">唯一写入 Agent</span><strong>Codex CLI</strong><small>批准后在独立 Git worktree 执行</small></div>
+              <label className="field-group"><span className="field-label">独立审查 Agent</span><select className="control" aria-label="独立审查 Agent" value={reviewerProvider} onChange={(event) => setReviewerProvider(event.target.value)}>{availableFor("reviewer").filter((agent) => agent.provider_id !== "codex").map((agent) => <option value={agent.provider_id} key={agent.provider_id}>{agent.display_name}</option>)}</select></label>
+            </div>
+            <label className="consent-row"><input aria-label="Allow selected agents to read project files" type="checkbox" checked={workspaceConsent} onChange={(event) => setWorkspaceConsent(event.target.checked)} /><span><strong>允许所选 Agent 读取项目文件</strong><small>分析和审查阶段使用只读权限。不要把密钥、凭据或不应交给模型的文件放入工作区。</small></span></label>
+            <div className="composer-footer"><span className="composer-note">{agentBusy ? "协作正在进行" : agentRun ? "协作阶段已记录，可断线恢复" : "等待启动"}</span><div className="collab-actions">{agentBusy && <button className="button button-secondary" type="button" onClick={cancelCollaboration} disabled={!agentRun}><CircleAlert size={14} />取消协作</button>}<button className="button button-primary" type="button" onClick={startCollaboration} disabled={agentBusy || !agentPrompt.trim() || !workspaceConsent || analysisProviders.length < 2 || availableFor("analysis").filter((agent) => analysisProviders.includes(agent.provider_id)).length < 2 || !availableFor("coordinator").some((agent) => agent.provider_id === coordinatorProvider) || !availableFor("reviewer").some((agent) => agent.provider_id === reviewerProvider)}>启动协作<ArrowUpRight size={16} /></button></div></div>
+            {agentPlan && <section className="plan-panel" aria-label="已保存的协作方案"><div className="card-heading"><div><span className="card-kicker">COORDINATOR PLAN</span><h3>{planApproved ? "已批准，Codex 正在执行" : "等待你的批准"}</h3></div><span className="count-badge">Codex 写入者</span></div><pre className="result-content">{agentPlan.text}</pre>{!planApproved && <div className="collab-actions"><button className="button button-secondary" type="button" onClick={cancelCollaboration} disabled={!agentRun}>拒绝方案</button><button className="button button-primary" type="button" onClick={approveAgentPlan} disabled={!agentRun}>批准方案并启动 Codex</button></div>}</section>}
+            <div className="agent-output-grid" aria-label="Agent 临时输出">{Object.entries(agentOutputs).map(([outputId, output]) => <div className="agent-output" key={outputId}><strong>{agents.find((agent) => agent.provider_id === output.providerId)?.display_name ?? output.providerId}<span className="output-role"> · {output.role}</span></strong><pre data-testid={`agent-output-${output.providerId}-${output.role}`}>{output.text}</pre></div>)}</div>
+            <div className="agent-facts" aria-label="协作阶段记录">{agentFacts.map((fact, index) => <div className="agent-fact" key={`${fact.type}-${index}`}><span className="event-mark" /><strong>{fact.type}</strong>{typeof fact.payload.provider_id === "string" && <span>{fact.payload.provider_id}</span>}{fact.type === "AGENT_REVIEW_COMPLETED" && typeof fact.payload.summary === "string" && <p>{fact.payload.summary}</p>}{fact.type === "AGENT_WRITER_COMPLETED" && typeof fact.payload.branch === "string" && <p>分支：{fact.payload.branch}</p>}</div>)}</div>
+            {agentDiff && <details className="agent-diff" open><summary>查看 Codex Git diff{agentDiff.truncated ? "（已截断）" : ""}</summary><div className="diff-meta">{agentDiff.branch && <span>分支：{agentDiff.branch}</span>}{agentDiff.worktree && <span>Worktree：{agentDiff.worktree}</span>}</div><pre>{agentDiff.text || "（没有文件差异）"}</pre></details>}
           </section>
 
           <section className="results-section" aria-labelledby="results-title">

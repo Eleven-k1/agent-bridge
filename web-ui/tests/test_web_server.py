@@ -19,6 +19,61 @@ def test_command_whitelist_and_server_side_envelope():
     assert WebApp._build_command({"type": "command", "command_type": "FAKE_TOOL_RUN", "payload": {"target_path": "evil.txt"}})["payload"]["target_path"] == "fake-output.txt"
 
 
+def test_local_agent_commands_are_fixed_and_bind_followups_to_server_run_ids():
+    inventory = WebApp._build_command({
+        "type": "command", "command_type": "LIST_LOCAL_AGENTS", "payload": {},
+    })
+    start = WebApp._build_command({
+        "type": "command",
+        "command_type": "START_AGENT_COLLABORATION",
+        "payload": {
+            "prompt": "Implement a feature",
+            "analysis_provider_ids": ["codex", "claude-code"],
+            "coordinator_provider_id": "codex",
+            "writer_provider_id": "codex",
+            "reviewer_provider_id": "claude-code",
+            "acknowledge_workspace_access": True,
+            "argv": ["evil"], "cwd": "C:/", "env": {"API_KEY": "secret"},
+        },
+    })
+    assert inventory and inventory["scope_type"] == "LOCAL_CONFIG"
+    assert start and start["command_type"] == "START_AGENT_COLLABORATION"
+    assert start["payload"] == {
+        "prompt": "Implement a feature",
+        "analysis_provider_ids": ["codex", "claude-code"],
+        "coordinator_provider_id": "codex",
+        "writer_provider_id": "codex",
+        "reviewer_provider_id": "claude-code",
+        "acknowledge_workspace_access": True,
+    }
+    run_id = start["run_id"]
+    approval = WebApp._build_command({
+        "type": "command", "command_type": "APPROVE_AGENT_PLAN",
+        "payload": {"run_id": run_id, "approval_digest": "a" * 64},
+    })
+    assert approval and approval["run_id"] == run_id
+    assert approval["payload"] == {"run_id": run_id, "approval_digest": "a" * 64}
+
+
+def test_local_agent_commands_reject_unapproved_or_arbitrary_payloads():
+    assert WebApp._build_command({
+        "type": "command", "command_type": "START_AGENT_COLLABORATION",
+        "payload": {
+            "prompt": "Run", "analysis_provider_ids": ["codex", "claude-code"],
+            "coordinator_provider_id": "codex", "writer_provider_id": "codex",
+            "reviewer_provider_id": "claude-code", "acknowledge_workspace_access": False,
+        },
+    }) is None
+    assert WebApp._build_command({
+        "type": "command", "command_type": "APPROVE_AGENT_PLAN",
+        "payload": {"run_id": "../repo", "approval_digest": "d"},
+    }) is None
+    assert WebApp._build_command({
+        "type": "command", "command_type": "START_AGENT_COLLABORATION",
+        "payload": {"argv": ["codex"]},
+    }) is None
+
+
 def test_resume_accepts_only_supported_scopes_and_non_negative_cursors():
     assert WebApp._build_resume({"type": "resume", "scope_type": "TASK", "scope_id": "task-1", "last_event_seq": 7}) == {
         "type": "resume", "scope_type": "TASK", "scope_id": "task-1", "last_event_seq": 7,

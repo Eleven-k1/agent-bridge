@@ -1,47 +1,37 @@
-﻿# 当前状态与验收结论
+# Current Status
 
-日期：2026-10-18
+Date: 2026-10-18
 
-## 当前结论
+## Product
 
-固定本地 OpenAI 兼容中转的真实 Provider 已接入正式应用链路。当前产品界面是监听 `127.0.0.1:5173` 的浏览器 Web UI，支持 Fake Provider 和固定地址 `http://127.0.0.1:8080` 两条路径。真实请求不发送或保存 API Key，不执行工具，不修改项目文件。正式事件以 SQLite 为事实来源，服务启动时会恢复 M1 任务状态并补发未完成发布的事件。
+The supported interface is the local browser Web UI at `http://127.0.0.1:5173/`. The desktop directory contains an early prototype and is not part of the supported workflow.
 
-## 已完成
+The Web UI now exposes a real local CLI collaboration workflow alongside the existing model sandbox:
 
-- `GET /v1/models` 模型发现；失败时允许手动填写模型名。
-- `POST /v1/chat/completions` 流式 SSE 与非流式 JSON。
-- HTTP、网络、超时、取消、协议错误分类和有限重试。
-- 真实请求沿用 M2 ModelGateway、M5 SQLite、M6 本地通信和 M7 Web UI 链路。
-- Web UI 提供三栏任务工作台：中央任务输入与结果、左侧 Fake 沙盒、右侧模型和运行检查；任务内容作为用户消息原样发送。
-- 每次新任务都会先清空上一轮流式文本、正式文本、终态和计数；`ACCEPTED` 只表示命令已登记，运行控件会等待模型/工具正式终态事件，入口错误或 WebSocket 错误会显示诊断信息并结束等待。
-- Web UI 区分临时流帧与正式持久化事件，终态只依据正式事件；WebSocket 重连后通过 TASK 和 LOCAL_CONFIG 事件游标补发正式事件，临时流帧会清空。
-- Web UI 静态页面设置 `Cache-Control: no-store`，前端源码变更后构建 `web-ui/dist/` 即可由现有服务加载新资源。
-- Python 子进程与测试命令使用后台隐藏方式，避免弹出黑色控制台窗口。
-- 所有已认证客户端的事件写入均成功后才记录 `published_at`；广播失败的事件保持待发布状态，服务重启时补发。
-- M1 按 TASK 正式事件重放任务状态，只跳过已知模型/工具事件；未知事件、重复创建和不连续序号会被拒绝。
-- Web UI 精确校验启动脚本参数、互斥并发启动，并只停止身份匹配的项目进程。
-- 生成的 JSON Schema 与运行时契约一致：作用域 ID 非空，正式事件必须且只能携带所属作用域的序号。
+- Discover local CLI agents and display their installation and adapter status.
+- Select 2-4 agents for parallel analysis, designate a coordinator, select a Codex writer, and choose a different independent reviewer.
+- Acknowledge workspace access before analysis begins.
+- Review and approve or reject the coordinated plan before the writer starts.
+- Show per-agent temporary output, persisted collaboration events, cancellation state, final Git diff, and independent review outcome.
+- Resume persisted task events after reconnect; temporary output is cleared on disconnect.
 
-## 自动化验证
+The initial adapters target Codex CLI and Claude Code CLI. The writer is restricted to Codex. The browser communicates through the loopback Web service and does not launch local processes itself.
 
-| 范围 | 结果 |
-|---|---:|
-| Python 完整测试（含 Web 服务） | 251 passed |
-| Web UI 客户端测试 | 5 passed |
-| Web UI TypeScript 类型检查 | 通过 |
-| Web UI 客户端构建 | 通过 |
+## Safety and Runtime
 
-Python 测试使用项目虚拟环境执行。浏览器服务启动前需要先在 `web-ui/client/` 构建静态资源。
+Analysis uses read-only CLI modes. A single writer applies the approved plan, and a different CLI agent reviews the resulting diff. Workspace access and plan approval are explicit UI steps. Process output is bounded, credentials are redacted from persisted diffs, and cancellation terminates managed child processes.
 
-## 使用限制
+Formal events are persisted in SQLite and are the source of truth for resumable state. Agent streaming output is temporary presentation data. The previous Fake Provider/model sandbox remains available as a separate workflow.
 
-- 仅支持 `http://127.0.0.1:8080`，不支持其他地址、HTTPS 或远程 Provider。
-- 不支持 API Key、OAuth 或凭据配置。
-- 当前本机 Relay 的 `/v1/models` 返回 `API_KEY_REQUIRED`；Web UI 尚未接入凭据配置，因此真实请求尚未完成认证后的端到端验收。
-- 尚未接入 Anthropic、Z.AI 等其他协议。
-- 真实工具执行、多智能体编排、安装包和人工真实中转验收仍未完成。
-- 当前 M1 事件重放覆盖已有生命周期和已知模型/工具事件；复杂的真实副作用对账仍未实现。
+## Verification
 
-## 人工验收待办
+Backend full suite: 268 passed using a repository-local pytest base directory. Web UI: 8 client tests passed, TypeScript typecheck passed, Vite production build passed, and `GET /health` returned `{"ok":true,"service":"web-ui"}`.
 
-完成安全的 Relay 凭据配置后，需要在浏览器 Web UI 刷新模型，确认模型列表或手动填写模型名，再执行一次真实请求，检查流式文本、正式事件和错误提示。项目已建立 Git 仓库；真实请求仍需在 Relay 认证可用后人工验收。
+## Acceptance Limits
+
+- Real Codex and Claude CLI end-to-end collaboration has not yet been accepted on this machine. Adapter discovery and process tests do not prove each installed CLI's version-specific flags and behavior.
+- This phase supports Codex CLI and Claude Code CLI; DeepSeek Harness, ZCode, and OpenCode need dedicated adapters before they can participate as real agents.
+- The writer currently uses Codex, while analysis and review can select supported providers.
+- Worktree-level verification is complete only after the backend full suite, diff checks, and an interactive Web UI smoke test pass.
+
+Older desktop UI plans and the August 2026 multi-agent bridge/task-allocation proposals under `docs/superpowers/` are historical references. Use this status document and the current collaboration design dated 2026-10-18 as the execution source of truth.

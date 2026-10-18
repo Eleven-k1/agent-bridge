@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 import secrets
 import uuid
 from datetime import datetime, timezone
@@ -15,7 +16,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend" / "src"))
 from agent_bridge.contracts.envelopes import canonical_digest
 
-ALLOWED_COMMANDS = frozenset({"LIST_LOCAL_MODELS", "REAL_MODEL_RUN", "FAKE_MODEL_RUN", "FAKE_TOOL_RUN"})
+ALLOWED_COMMANDS = frozenset({
+    "LIST_LOCAL_MODELS", "REAL_MODEL_RUN", "FAKE_MODEL_RUN", "FAKE_TOOL_RUN",
+    "LIST_LOCAL_AGENTS", "START_AGENT_COLLABORATION", "APPROVE_AGENT_PLAN",
+    "CANCEL_AGENT_COLLABORATION",
+})
 
 
 class WebApp:
@@ -193,9 +198,55 @@ class WebApp:
         if kind not in ALLOWED_COMMANDS or not isinstance(raw, dict):
             return None
         payload: dict[str, Any]
-        scope = "LOCAL_CONFIG" if kind == "LIST_LOCAL_MODELS" else "TASK"
-        if kind == "LIST_LOCAL_MODELS":
+        scope = "LOCAL_CONFIG" if kind in {"LIST_LOCAL_MODELS", "LIST_LOCAL_AGENTS"} else "TASK"
+        if kind in {"LIST_LOCAL_MODELS", "LIST_LOCAL_AGENTS"}:
             payload = {}
+        elif kind == "START_AGENT_COLLABORATION":
+            prompt = raw.get("prompt")
+            analysis_ids = raw.get("analysis_provider_ids")
+            coordinator = raw.get("coordinator_provider_id")
+            writer = raw.get("writer_provider_id")
+            reviewer = raw.get("reviewer_provider_id")
+            supported = {"codex", "claude-code"}
+            if (
+                not isinstance(prompt, str)
+                or not prompt.strip()
+                or len(prompt.encode("utf-8")) > 16_000
+                or not isinstance(analysis_ids, list)
+                or not 2 <= len(analysis_ids) <= 4
+                or any(not isinstance(item, str) or item not in supported for item in analysis_ids)
+                or len(set(analysis_ids)) != len(analysis_ids)
+                or coordinator not in analysis_ids
+                or writer != "codex"
+                or not isinstance(reviewer, str)
+                or reviewer not in supported
+                or reviewer == writer
+                or raw.get("acknowledge_workspace_access") is not True
+            ):
+                return None
+            payload = {
+                "prompt": prompt.strip(),
+                "analysis_provider_ids": analysis_ids,
+                "coordinator_provider_id": coordinator,
+                "writer_provider_id": writer,
+                "reviewer_provider_id": reviewer,
+                "acknowledge_workspace_access": True,
+            }
+        elif kind == "APPROVE_AGENT_PLAN":
+            run_id, digest = raw.get("run_id"), raw.get("approval_digest")
+            if (
+                not isinstance(run_id, str)
+                or not re.fullmatch(r"[A-Za-z0-9._-]{1,96}", run_id)
+                or not isinstance(digest, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            ):
+                return None
+            payload = {"run_id": run_id, "approval_digest": digest}
+        elif kind == "CANCEL_AGENT_COLLABORATION":
+            run_id = raw.get("run_id")
+            if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,96}", run_id):
+                return None
+            payload = {"run_id": run_id}
         elif kind == "REAL_MODEL_RUN":
             model = raw.get("model")
             messages = raw.get("messages")
@@ -217,7 +268,8 @@ class WebApp:
         cid = uuid.uuid4().hex
         command = {"protocol_version": "0.5.1", "scope_type": scope, "scope_id": "local-config" if scope == "LOCAL_CONFIG" else "task-1", "command_id": f"cmd-{cid}", "command_idempotency_key": f"web-{cid}", "issuer": "local-web", "command_type": kind, "payload": payload, "issued_at": datetime.now(timezone.utc).isoformat()}
         if scope == "TASK":
-            command.update({"task_id": "task-1", "run_id": f"run-{cid}"})
+            run_id = payload.get("run_id") if kind in {"APPROVE_AGENT_PLAN", "CANCEL_AGENT_COLLABORATION"} else f"run-{cid}"
+            command.update({"task_id": "task-1", "run_id": run_id})
         command["command_request_digest"] = canonical_digest(command)
         return command
 

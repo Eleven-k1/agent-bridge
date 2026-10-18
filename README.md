@@ -1,14 +1,40 @@
 # Agent Bridge
 
-本项目是运行在 Windows 本机的多智能体桥接原型，包含 Python 后端和本机浏览器 Web UI。公共协议基线是 M0 v0.5.1，正式事件保存在 SQLite，模型临时流帧只用于即时显示。当前支持的用户界面为 Web UI；`desktop/` 是早期桌面原型，不作为运行入口或后续功能开发目标。
+Agent Bridge is a Windows-local multi-agent coding workspace. The supported user interface is the browser Web UI; the early desktop prototype is not an application entry point.
 
-## 启动入口
+## Collaboration workflow
 
-- 首次运行或前端源码更新后，在 `web-ui/client/` 执行 `npm.cmd install` 和 `npm.cmd run build`，生成服务使用的 `web-ui/dist/` 静态资源。
-- Web UI：双击 `web-ui/start-web.vbs`，访问 `http://127.0.0.1:5173`；双击 `web-ui/stop-web.vbs` 停止。启动脚本会复用已经健康的本项目服务。
-- Web UI 提供三栏任务工作台：中央区域提交任务并查看流式文本与正式事件，左侧提供 Fake 沙盒，右侧显示模型、连接、命令、事件计数和错误。
-- 开发时可在项目根目录执行 `backend\.venv\Scripts\python.exe -m agent_bridge.app` 单独启动后端。
+1. Open the Web UI at `http://127.0.0.1:5173/` and choose installed local CLI agents for parallel analysis, coordination, and independent review.
+2. The selected agents inspect the acknowledged project workspace and return proposals. Their intermediate output is shown separately from persisted task events.
+3. Review and approve the coordinated plan in the UI. Only the designated Codex writer then applies changes.
+4. A different selected CLI agent reviews the resulting Git diff. The UI shows the review outcome and run history.
 
-Web UI 只连接本机回环地址。真实模型固定经 `http://127.0.0.1:8080` 中转；浏览器不接触 API Key、TCP 凭据、项目文件或 Shell 接口。
+The initial runtime adapters support Codex CLI and Claude Code CLI. Agent discovery reports installed tools and whether each is currently supported. This workflow is for local project work and requires explicit acknowledgement of workspace access and approval of the write plan.
 
-当前状态、测试证据和已知限制见 `docs/current-status.md`。历史设计和实施计划位于 `docs/superpowers/`，不作为当前运行规则。
+## Start the Web UI
+
+Build the client after a fresh checkout or client source changes:
+
+```powershell
+cd web-ui/client
+npm.cmd install
+npm.cmd run build
+cd ../..
+wscript.exe .\web-ui\start-web.vbs
+```
+
+Then open `http://127.0.0.1:5173/`. Stop the service with `wscript.exe .\web-ui\stop-web.vbs`. The service uses the project Python environment and serves the built files from `web-ui/dist/`.
+
+The backend can also be started directly with `backend\.venv\Scripts\python.exe -m agent_bridge.app` from the repository root. Persistent events are stored in SQLite; set `AGENT_BRIDGE_DB_PATH` to override the default database path.
+
+## Validation
+
+```powershell
+backend\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=backend\.pytest-run-tmp
+cd web-ui\client
+npm.cmd test
+npm.cmd run typecheck
+npm.cmd run build
+```
+
+Current verification results and known acceptance limits are tracked in [docs/current-status.md](docs/current-status.md).

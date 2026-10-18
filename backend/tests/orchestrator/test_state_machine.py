@@ -97,6 +97,9 @@ def test_restore_task_events_rebuilds_state_without_emitting_new_candidates() ->
         {"task_event_sequence": 10, "event_type": "TOOL_EXECUTION_PLANNED", "task_id": "task-1", "run_id": "run-1"},
         {"task_event_sequence": 11, "event_type": "TOOL_EXECUTION_COMPLETED", "task_id": "task-1", "run_id": "run-1"},
         {"task_event_sequence": 12, "event_type": "TOOL_EXECUTION_FAILED", "task_id": "task-1", "run_id": "run-1"},
+        {"task_event_sequence": 13, "event_type": "AGENT_COLLABORATION_STARTED", "task_id": "task-1", "run_id": "run-1"},
+        {"task_event_sequence": 14, "event_type": "AGENT_PLAN_READY", "task_id": "task-1", "run_id": "run-1"},
+        {"task_event_sequence": 15, "event_type": "AGENT_WRITER_COMPLETED", "task_id": "task-1", "run_id": "run-1"},
     ]
     store = RecordingEventStore()
     core = Orchestrator(store)
@@ -106,6 +109,21 @@ def test_restore_task_events_rebuilds_state_without_emitting_new_candidates() ->
     assert restored == {("task-1", "run-1")}
     assert core.get_state("task-1", "run-1").lifecycle is Lifecycle.ACTIVE
     assert core.get_state("task-1", "run-1").phase is TaskPhase.EXECUTION
+    assert store.events == []
+
+
+def test_restore_ignores_known_agent_events_without_perturbing_m1_state():
+    store = RecordingEventStore()
+    core = Orchestrator(store)
+    events = [
+        {"task_event_sequence": 1, "event_type": "TASK_CREATED", "task_id": "task-1", "run_id": "run-1"},
+        {"task_event_sequence": 2, "event_type": "AGENT_COLLABORATION_STARTED", "task_id": "task-1", "run_id": "run-1"},
+        {"task_event_sequence": 3, "event_type": "TASK_STARTED", "task_id": "task-1", "run_id": "run-1"},
+        {"task_event_sequence": 4, "event_type": "AGENT_PLAN_READY", "task_id": "task-1", "run_id": "run-1"},
+    ]
+
+    assert core.restore_task_events(events) == {("task-1", "run-1")}
+    assert core.get_state("task-1", "run-1").lifecycle is Lifecycle.ACTIVE
     assert store.events == []
 
 

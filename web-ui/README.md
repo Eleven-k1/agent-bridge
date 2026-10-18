@@ -1,9 +1,19 @@
-# 本机 Web UI
+# Local Web UI
 
-当前唯一支持的用户界面是浏览器 Web UI。首次运行或客户端源码有更新后，在 `client/` 执行 `npm.cmd install` 和 `npm.cmd run build`，构建产物写入 `dist/`。双击 `start-web.vbs` / `start-web.bat` 启动服务，再用浏览器访问 `http://127.0.0.1:5173`。脚本使用项目虚拟环境的 `pythonw.exe`，不会弹出控制台；已有健康服务会直接复用。
+The browser Web UI is the supported user interface. Build and start it from the repository root:
 
-双击 `stop-web.vbs` / `stop-web.bat` 停止经过项目身份校验的服务。工作台支持自定义任务内容、模型发现和手动模型名称、真实模型任务、Fake 模型任务和 Fake Tool。流式帧与持久化正式事件分开展示；连接恢复后按事件游标补发 TASK 和 LOCAL_CONFIG 事件。真实模型固定使用 `http://127.0.0.1:8080` 中转。
+```powershell
+cd web-ui/client
+npm.cmd install
+npm.cmd run build
+cd ../..
+wscript.exe .\web-ui\start-web.vbs
+```
 
-客户端测试和构建：在 `client/` 执行 `npm.cmd test`、`npm.cmd run typecheck`、`npm.cmd run build`。Web 服务测试：在仓库根目录执行 `backend\.venv\Scripts\python.exe -m pytest web-ui/tests -q -p no:cacheprovider`。
+Open `http://127.0.0.1:5173/`. Stop the local service with `wscript.exe .\web-ui\stop-web.vbs`. The service reuses a healthy project instance and serves the Vite production output from `dist/`.
 
-构建产物位于 `web-ui/dist/`。页面 HTML 使用 `Cache-Control: no-store`；更新后重新加载即可获取新的哈希资源。当前仍不执行真实文件、Shell 或 Git 操作。
+The workspace includes the local CLI collaboration workflow and the existing model sandbox. Collaboration supports Codex CLI and Claude Code CLI discovery, parallel read-only analysis, a coordinated plan requiring UI approval, one Codex writer, and an independent reviewer. The UI displays agent inventory, roles, temporary output, persisted events, cancellation, Git diff, and review outcome. The browser sends commands through the loopback Web service; local process management remains in the Python backend.
+
+Client checks in `client/`: `npm.cmd test`, `npm.cmd run typecheck`, and `npm.cmd run build`. Backend tests from the repository root: `backend\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=backend\.pytest-run-tmp`.
+
+Current limits and acceptance status are in [../docs/current-status.md](../docs/current-status.md). Real installed CLI end-to-end acceptance remains outstanding.

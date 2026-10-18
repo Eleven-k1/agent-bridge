@@ -30,6 +30,7 @@ from agent_bridge.transport.protocol import (
     MSG_AUTH,
     MSG_AUTH_FAILED,
     MSG_AUTH_OK,
+    MSG_AGENT_FRAME,
     MSG_COMMAND,
     MSG_COMMAND_RESULT,
     MSG_CONNECTION_STATE,
@@ -125,6 +126,10 @@ class LoopbackServer:
         if display_delta is not None:
             message["content_delta"] = display_delta
         await self._broadcast(message)
+
+    async def broadcast_agent_frame(self, frame: dict[str, Any]) -> None:
+        """Broadcast transient local-agent output without persisting it as an event."""
+        await self._broadcast({"type": MSG_AGENT_FRAME, **frame})
 
     async def publish_event(self, candidate: dict[str, Any]) -> dict[str, Any]:
         """经事件存储确认后发布正式事件，返回完整信封。"""

@@ -24,6 +24,8 @@ from types import SimpleNamespace
 from typing import Any, Callable
 from uuid import uuid4
 
+from agent_bridge.agent_runtime.coordinator import AgentCollaborationCoordinator
+from agent_bridge.agent_runtime.registry import discover_agents
 from agent_bridge.contracts.envelopes import (
     CommandEnvelope,
     PROTOCOL_VERSION,
@@ -244,6 +246,7 @@ class IntegratedCommandRouter:
         workspace_root: Path,
         workspace_identity: str,
         real_provider: OpenAICompatibleProvider,
+        agent_coordinator: AgentCollaborationCoordinator | None = None,
     ) -> None:
         self._event_store = event_store
         self._raw_event_store = raw_event_store
@@ -253,6 +256,7 @@ class IntegratedCommandRouter:
         self._workspace_root = workspace_root
         self._workspace_identity = workspace_identity
         self._real_provider = real_provider
+        self._agent_coordinator = agent_coordinator or AgentCollaborationCoordinator(workspace_root)
         self._m1_events = M1EventPort()
         self._orchestrator = Orchestrator(self._m1_events)
         self._server: LoopbackServer | None = None
@@ -264,6 +268,9 @@ class IntegratedCommandRouter:
 
     def restore_task_events(self, events: list[Any]) -> set[tuple[str, str]]:
         return self._orchestrator.restore_task_events(events)
+
+    def restore_agent_events(self, events: list[Any]) -> list[dict[str, Any]]:
+        return self._agent_coordinator.restore(events)
 
     async def handle_command(self, command: dict[str, Any]) -> None:
         command_type = command.get("command_type")
@@ -279,6 +286,32 @@ class IntegratedCommandRouter:
             return
         if command_type == "LIST_LOCAL_MODELS":
             await self._list_local_models(command)
+            return
+        if command_type == "LIST_LOCAL_AGENTS":
+            await self._list_local_agents(command)
+            return
+        if command_type == "START_AGENT_COLLABORATION":
+            if self._server is None:
+                raise RuntimeError("integrated router is not bound to a server")
+            await self._agent_coordinator.start(
+                command,
+                self._server.publish_event,
+                self._server.broadcast_agent_frame,
+            )
+            return
+        if command_type == "APPROVE_AGENT_PLAN":
+            payload = command.get("payload") or {}
+            await self._agent_coordinator.approve_plan(
+                command.get("task_id", ""),
+                command.get("run_id", ""),
+                payload.get("approval_digest", ""),
+            )
+            return
+        if command_type == "CANCEL_AGENT_COLLABORATION":
+            await self._agent_coordinator.cancel(
+                command.get("task_id", ""),
+                command.get("run_id", ""),
+            )
             return
         if command_type == "FAKE_MODEL_CANCEL":
             operation_id = (command.get("payload") or {}).get("operation_id")
@@ -309,6 +342,21 @@ class IntegratedCommandRouter:
             "actor": "local-relay",
             "event_type": "LOCAL_MODELS_LISTED",
             "payload": {"models": models, "status": status, "category": category},
+        })
+
+    async def _list_local_agents(self, command: dict[str, Any]) -> None:
+        if self._server is None:
+            raise RuntimeError("integrated router is not bound to a server")
+        agents = [agent.to_public_dict() for agent in discover_agents()]
+        await self._server.publish_event({
+            "scope_type": "LOCAL_CONFIG",
+            "scope_id": command.get("scope_id", "local-config"),
+            "operation_id": f"local-agents:{command.get('command_id', uuid4().hex)}",
+            "event_deduplication_key": f"local-agents:{command.get('command_id', uuid4().hex)}",
+            "causation_id": command.get("command_id", "local-agents-list"),
+            "actor": "local-agent-registry",
+            "event_type": "LOCAL_AGENTS_LISTED",
+            "payload": {"agents": agents, "status": "available"},
         })
 
     def _start_real_model_run(self, command: dict[str, Any]) -> None:
@@ -469,6 +517,7 @@ class IntegratedCommandRouter:
             self._gateways.pop(operation_id, None)
 
     async def shutdown(self) -> None:
+        await self._agent_coordinator.shutdown()
         for task in self._model_tasks.values():
             task.cancel()
         if self._model_tasks:
@@ -522,11 +571,14 @@ class IntegratedApp:
         self.router.bind(self.server)
 
     async def start(self) -> None:
+        interrupted_agent_events: list[dict[str, Any]] = []
         for scope_id in self._event_store_raw.scopes(scope_type="TASK"):
-            self.router.restore_task_events(
-                self._event_store_raw.replay(scope_type="TASK", scope_id=scope_id)
-            )
+            events = self._event_store_raw.replay(scope_type="TASK", scope_id=scope_id)
+            self.router.restore_task_events(events)
+            interrupted_agent_events.extend(self.router.restore_agent_events(events))
         await self.server.start()
+        for event in interrupted_agent_events:
+            await self.server.publish_event(event)
         for scope_type, scope_id in self._event_store_raw.pending_scopes():
             for sequence in self._event_store_raw.pending_publications(
                 scope_type=scope_type, scope_id=scope_id

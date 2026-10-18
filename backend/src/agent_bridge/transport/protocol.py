@@ -24,6 +24,7 @@ MSG_CONNECTION_STATE = "connection_state"
 MSG_COMMAND_RESULT = "command_result"
 MSG_EVENT = "event"
 MSG_MODEL_FRAME = "model_frame"
+MSG_AGENT_FRAME = "agent_frame"
 MSG_RESUME_DONE = "resume_done"
 MSG_PROTOCOL_ERROR = "protocol_error"
 
