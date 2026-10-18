@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "outDir": "out/types-web"
   },
-  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx", "tests/task-store.test.ts", "tests/app.test.tsx"]
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx", "tests/task-store.test.ts", "tests/app.test.tsx", "tests/ipc-error.test.tsx"]
 }

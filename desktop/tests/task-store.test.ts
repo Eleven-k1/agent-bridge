@@ -157,4 +157,22 @@ describe("TaskStore 状态投影", () => {
     store.handleMessage(taskEvent("MODEL_OPERATION_CANCELLED", 6, {}));
     expect(store.getState().terminal).toBe("COMPLETED");
   });
+
+  it("starts a new task with a clean task projection", () => {
+    const store = createTaskStore();
+    store.handleMessage(deltaFrame("old stream", 1));
+    store.handleMessage(taskEvent("MODEL_CONTENT_CHUNK_RECORDED", 2, { text: "old recorded" }));
+    store.handleMessage(taskEvent("MODEL_OPERATION_COMPLETED", 3, {}));
+
+    store.beginTask();
+
+    const state = store.getState();
+    expect(state.streamedText).toBe("");
+    expect(state.recordedText).toBe("");
+    expect(state.terminal).toBeNull();
+    expect(state.lastEventType).toBeNull();
+    expect(state.lastEventError).toBeNull();
+    expect(state.pendingCommand).toBe(true);
+    expect(state.lastCommandStatus).toBeNull();
+  });
 });

@@ -61,7 +61,9 @@ const initialState: TaskState = {
 export interface TaskStore {
   getState(): TaskState;
   subscribe(listener: () => void): () => void;
+  beginTask(): void;
   markCommandPending(): void;
+  handleCommandFailure(error?: string): void;
   handleConnectionState(state: TaskState["connection"]): void;
   handleMessage(message: unknown): void;
   setManualModel(model: string): void;
@@ -83,8 +85,30 @@ export function createTaskStore(): TaskStore {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    beginTask() {
+      update({
+        streamedText: "",
+        recordedText: "",
+        terminal: null,
+        lastEventType: null,
+        lastEventError: null,
+        receivedFrames: 0,
+        receivedEvents: 0,
+        pendingCommand: true,
+        lastCommandStatus: null,
+        lastProviderError: null,
+      });
+    },
     markCommandPending() {
       update({ pendingCommand: true });
+    },
+    handleCommandFailure(error) {
+      const message = error?.trim() || "命令提交失败";
+      update({
+        pendingCommand: false,
+        lastCommandStatus: "FAILED",
+        lastProviderError: message,
+      });
     },
     setManualModel(model) { update({ manualModel: model }); },
     setSelectedModel(model) { update({ selectedModel: model }); },

@@ -51,6 +51,21 @@ const TERMINAL_TONES: Record<NonNullable<TaskState["terminal"]>, string> = {
   CANCELLED: "warning",
 };
 
+type BridgeCommandResult = { ok: boolean; error?: string };
+
+async function settleBridgeCommand(
+  command: () => Promise<BridgeCommandResult | undefined> | undefined,
+): Promise<BridgeCommandResult | undefined> {
+  try {
+    const result = await command();
+    if (!result?.ok) store.handleCommandFailure(result?.error);
+    return result;
+  } catch (error) {
+    store.handleCommandFailure(error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
+}
+
 export default function App() {
   const state = useSyncExternalStore(store.subscribe, store.getState);
   const [taskPrompt, setTaskPrompt] = useState("");
@@ -67,26 +82,29 @@ export default function App() {
   }, []);
 
   const runTask = useCallback(async () => {
-    store.markCommandPending();
-    await window.bridge?.runFakeTask(["正在", "通过", "Fake Provider", "流式输出…"]);
+    store.beginTask();
+    await settleBridgeCommand(() => window.bridge?.runFakeTask(["正在", "通过", "Fake Provider", "流式输出…"]));
   }, []);
 
   const runTool = useCallback(async () => {
-    store.markCommandPending();
-    await window.bridge?.runFakeTool();
+    store.beginTask();
+    await settleBridgeCommand(() => window.bridge?.runFakeTool());
   }, []);
 
   const refreshModels = useCallback(async () => {
     store.markCommandPending();
-    const result = await window.bridge?.listLocalModels();
-    if (result && !result.ok) store.handleMessage({ type: "event", event: { event_type: "LOCAL_MODELS_LISTED", payload: { models: [], status: "unavailable", error: result.error } } });
+    const result = await settleBridgeCommand(() => window.bridge?.listLocalModels());
+    if (result && !result.ok) {
+      store.handleMessage({ type: "event", event: { event_type: "LOCAL_MODELS_LISTED", payload: { models: [], status: "unavailable", error: result.error } } });
+      store.handleCommandFailure(result.error);
+    }
   }, []);
 
   const runRealTask = useCallback(async () => {
     const model = state.manualModel.trim() || state.selectedModel;
     if (!model || !taskPrompt.trim()) return;
-    store.markCommandPending();
-    await window.bridge?.runRealTask(model, [{ role: "user", content: taskPrompt }], true);
+    store.beginTask();
+    await settleBridgeCommand(() => window.bridge?.runRealTask(model, [{ role: "user", content: taskPrompt }], true));
   }, [state.manualModel, state.selectedModel, taskPrompt]);
 
   const activeModel = state.manualModel.trim() || state.selectedModel || "未选择模型";
@@ -236,8 +254,8 @@ export default function App() {
         <div className="inspector-section last-event-section">
           <div className="inspector-label"><Clock3 size={14} aria-hidden="true" /> LAST EVENT</div>
           <div className="last-event">{state.lastEventType ?? "等待事件确认"}</div>
-          {state.lastEventError && <div className="inspector-error"><CircleAlert size={14} aria-hidden="true" />{state.lastEventError}</div>}
-          {state.modelDiscoveryStatus === "unavailable" && <div className="inspector-error"><CircleAlert size={14} aria-hidden="true" />local relay unavailable</div>}
+          {(state.lastEventError ?? state.lastProviderError) && <div className="inspector-error"><CircleAlert size={14} aria-hidden="true" />{state.lastEventError ?? state.lastProviderError}</div>}
+          {state.modelDiscoveryStatus === "unavailable" && !state.lastProviderError && <div className="inspector-error"><CircleAlert size={14} aria-hidden="true" />local relay unavailable</div>}
         </div>
       </aside>
     </main>

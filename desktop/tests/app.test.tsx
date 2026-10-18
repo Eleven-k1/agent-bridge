@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, act } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type AppType from "../src/renderer/App";
 import type { BridgeApi } from "../src/renderer/bridge-api";
@@ -103,6 +103,26 @@ describe("App 工作台渲染", () => {
 
     act(() => emitMessage(taskEvent("MODEL_OPERATION_COMPLETED", 4, { finish_reason: "stop" })));
     expect(screen.getByTestId("terminal-label").textContent).toContain("模型操作完成");
+  });
+
+  it("submitting a second task clears the previous task projection", async () => {
+    const { emitMessage } = installMockBridge();
+    const App = await loadApp();
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Manual model"), { target: { value: "local-model" } });
+    fireEvent.change(screen.getByLabelText("Task request"), { target: { value: "first task" } });
+    act(() => emitMessage(deltaFrame("old stream")));
+    act(() => emitMessage(taskEvent("MODEL_CONTENT_CHUNK_RECORDED", 1, { text: "old recorded" })));
+    act(() => emitMessage(taskEvent("MODEL_OPERATION_COMPLETED", 2, {})));
+    expect(screen.getByTestId("terminal-label")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Task request"), { target: { value: "second task" } });
+    await act(async () => { screen.getByRole("button", { name: /run real task/i }).click(); });
+
+    expect(screen.queryByTestId("terminal-label")).toBeNull();
+    expect(screen.getByTestId("streamed-text").textContent).not.toContain("old stream");
+    expect(screen.getByTestId("recorded-text").textContent).not.toContain("old recorded");
   });
 
   it("重连时清空临时流式层，保留正式层（帧不补发）", async () => {
