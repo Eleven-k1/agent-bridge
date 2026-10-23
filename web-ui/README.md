@@ -16,4 +16,4 @@ The workspace includes the local CLI collaboration workflow and the existing mod
 
 Client checks in `client/`: `npm.cmd test`, `npm.cmd run typecheck`, and `npm.cmd run build`. Backend tests from the repository root: `backend\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=backend\.pytest-run-tmp`.
 
-Current limits and acceptance status are in [../docs/current-status.md](../docs/current-status.md). Real installed CLI end-to-end acceptance remains outstanding.
+Current limits and acceptance status are in [../docs/current-status.md](../docs/current-status.md). Codex has passed a real read-only smoke call; Claude Code initialized in read-only mode but its API returned HTTP 503, so complete collaboration acceptance remains outstanding.

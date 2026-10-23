@@ -29,10 +29,8 @@ class ClaudeCodeProvider:
             "dontAsk",
             "--tools",
             "Read,Glob,Grep",
-            "--bare",
+            "--safe-mode",
             "--strict-mcp-config",
-            "--mcp-config",
-            '{"mcpServers":{}}',
             "--add-dir",
             str(workspace.resolve()),
         ]

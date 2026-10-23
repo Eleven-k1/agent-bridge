@@ -11,6 +11,8 @@ Agent Bridge is a Windows-local multi-agent coding workspace. The supported user
 
 The initial runtime adapters support Codex CLI and Claude Code CLI. Agent discovery reports installed tools and whether each is currently supported. This workflow is for local project work and requires explicit acknowledgement of workspace access and approval of the write plan.
 
+On the current machine, a read-only Codex CLI smoke call passed. Claude Code was discovered and initialized in read-only mode, but its API returned HTTP 503 during the smoke call; see [current status](docs/current-status.md) before treating the full multi-agent workflow as accepted.
+
 ## Start the Web UI
 
 Build the client after a fresh checkout or client source changes:

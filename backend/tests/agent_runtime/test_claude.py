@@ -13,8 +13,10 @@ def test_claude_uses_read_only_tool_allowlist_and_disables_mcp(tmp_path):
 
     assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
     assert argv[argv.index("--tools") + 1] == "Read,Glob,Grep"
-    assert argv[argv.index("--mcp-config") + 1] == '{"mcpServers":{}}'
-    assert "--bare" in argv
+    assert "--safe-mode" in argv
+    assert "--strict-mcp-config" in argv
+    assert "--bare" not in argv
+    assert "--mcp-config" not in argv
 
 
 def test_claude_writer_role_is_rejected(tmp_path):

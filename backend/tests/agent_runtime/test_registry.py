@@ -49,6 +49,30 @@ def test_inventory_detects_supported_binary_from_explicit_path(tmp_path):
     assert codex.supported_roles == ("analysis", "coordinator", "writer", "reviewer")
 
 
+def test_codex_npm_install_uses_node_resolved_from_path(tmp_path):
+    if os.name != "nt":
+        pytest.skip("Windows npm launcher layout")
+    npm_root = tmp_path / "npm"
+    node_root = tmp_path / "node-runtime"
+    node_root.mkdir()
+    node = node_root / "node.exe"
+    node.write_text("", encoding="utf-8")
+    package_root = npm_root / "node_modules" / "@openai" / "codex"
+    script = package_root / "bin" / "codex.js"
+    script.parent.mkdir(parents=True)
+    script.write_text("", encoding="utf-8")
+    (package_root / "package.json").write_text(
+        json.dumps({"name": "@openai/codex"}), encoding="utf-8"
+    )
+
+    codex = discover_agents(path=os.pathsep.join((str(npm_root), str(node_root))))[0]
+
+    assert codex.installed is True
+    assert codex.launch_target is not None
+    assert codex.launch_target.executable == node.resolve()
+    assert codex.launch_target.fixed_args == (str(script.resolve()),)
+
+
 def test_windows_cmd_shims_are_not_claimed_as_safe_native_launchers(tmp_path, monkeypatch):
     if os.name != "nt":
         pytest.skip("Windows launcher policy")

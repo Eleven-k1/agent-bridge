@@ -36,4 +36,4 @@ backend\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=bac
 
 Run client checks in `web-ui/client/`: `npm.cmd test`, `npm.cmd run typecheck`, and `npm.cmd run build`.
 
-See [current-status.md](../current-status.md) for current acceptance limits. Real CLI end-to-end behavior still requires interactive acceptance against the locally installed tool versions.
+See [current-status.md](../current-status.md) for current acceptance limits. Codex CLI 0.163.0 passed a real read-only smoke call. Claude Code 2.1.287 initialized with the expected read-only configuration, but its API returned HTTP 503 before a final response; full multi-agent acceptance is still pending.

@@ -94,10 +94,14 @@ def _resolve_codex(search_path: str) -> LaunchTarget | None:
         direct = directory / "codex.exe"
         if direct.is_file():
             return LaunchTarget(direct.resolve())
+    node = next(
+        (directory / "node.exe" for directory in _path_entries(search_path)
+         if (directory / "node.exe").is_file()),
+        None,
+    )
     for directory in _npm_roots(search_path):
-        node = directory / "node.exe"
         script = directory / "node_modules" / "@openai" / "codex" / "bin" / "codex.js"
-        if node.is_file() and _valid_npm_package(
+        if node is not None and _valid_npm_package(
             script.parents[1] / "package.json", "@openai/codex"
         ) and script.is_file():
             return LaunchTarget(node.resolve(), (str(script.resolve()),))

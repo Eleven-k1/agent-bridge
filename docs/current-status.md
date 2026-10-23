@@ -1,6 +1,6 @@
 # Current Status
 
-Date: 2026-10-18
+Date: 2026-10-23
 
 ## Product
 
@@ -25,11 +25,17 @@ Formal events are persisted in SQLite and are the source of truth for resumable 
 
 ## Verification
 
-Backend full suite: 268 passed using a repository-local pytest base directory. Web UI: 8 client tests passed, TypeScript typecheck passed, Vite production build passed, and `GET /health` returned `{"ok":true,"service":"web-ui"}`.
+Backend full suite: 269 passed using a repository-local pytest base directory. Web UI: 8 client tests passed, TypeScript typecheck passed, and Vite production build passed.
+
+## Local CLI Smoke Check
+
+On 2026-10-23, discovery resolved Codex CLI 0.163.0 through its official npm package and Node runtime on `PATH`, and Claude Code 2.1.287 through its official native npm package. A real Codex read-only invocation returned the expected response. Claude initialized in read-only mode with no MCP servers, then the Anthropic API returned repeated HTTP 503 `server_error` responses before a final answer; full multi-agent collaboration therefore remains unaccepted pending a successful Claude request.
+
+The Windows Codex adapter runs the verified `@openai/codex` JavaScript entrypoint directly under the resolved native `node.exe`; it does not execute the npm `.cmd` or PowerShell shims. Claude runs in `--safe-mode` with only `Read`, `Glob`, and `Grep` tools and strict MCP configuration, preserving normal CLI authentication while disabling user/project customizations.
 
 ## Acceptance Limits
 
-- Real Codex and Claude CLI end-to-end collaboration has not yet been accepted on this machine. Adapter discovery and process tests do not prove each installed CLI's version-specific flags and behavior.
+- A real Codex read-only smoke call passed. Claude started with the expected read-only capabilities, but upstream HTTP 503 responses prevented a final answer; parallel analysis and the full approve/write/review flow still need end-to-end acceptance.
 - This phase supports Codex CLI and Claude Code CLI; DeepSeek Harness, ZCode, and OpenCode need dedicated adapters before they can participate as real agents.
 - The writer currently uses Codex, while analysis and review can select supported providers.
 - Worktree-level verification is complete only after the backend full suite, diff checks, and an interactive Web UI smoke test pass.
