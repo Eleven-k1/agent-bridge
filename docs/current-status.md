@@ -13,6 +13,7 @@ The Web UI now exposes a real local CLI collaboration workflow alongside the exi
 - Acknowledge workspace access before analysis begins.
 - Review and approve or reject the coordinated plan before the writer starts.
 - Show per-agent temporary output, persisted collaboration events, cancellation state, final Git diff, and independent review outcome.
+- After a run completes, fails, or is cancelled, show a task report with each analysis summary, the coordinated plan, execution branch and Git diff, review summary, and failure details. Replay of formal TASK events rebuilds the report after a page reload.
 - Resume persisted task events after reconnect; temporary output is cleared on disconnect.
 
 The initial adapters target Codex CLI and Claude Code CLI. The writer is restricted to Codex. The browser communicates through the loopback Web service and does not launch local processes itself.
@@ -25,7 +26,7 @@ Formal events are persisted in SQLite and are the source of truth for resumable 
 
 ## Verification
 
-Backend full suite: 269 passed using a repository-local pytest base directory. Web UI: 8 client tests passed, TypeScript typecheck passed, and Vite production build passed.
+Backend full suite: 283 passed using a repository-local pytest base directory. Web UI: 12 client tests passed, TypeScript typecheck passed, and Vite production build passed.
 
 ## Local CLI Smoke Check
 
