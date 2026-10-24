@@ -10,6 +10,7 @@
 *.log
 __pycache__/
 .pytest_cache/
+.pytest-run*/
 .venv/
 *.egg-info/
 node_modules/

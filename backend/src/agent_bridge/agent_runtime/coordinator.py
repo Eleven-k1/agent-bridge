@@ -122,6 +122,7 @@ class AgentCollaborationCoordinator:
         if key in self._runs:
             raise CollaborationError("collaboration run already exists")
 
+        baseline_metadata = self._baseline_metadata()
         run = _Run(
             task_id=task_id,
             run_id=run_id,
@@ -132,6 +133,7 @@ class AgentCollaborationCoordinator:
             reviewer_provider_id=reviewer_id,
             emit_event=emit_event,
             emit_frame=emit_frame,
+            baseline_commit=baseline_metadata["baseline_commit"],
         )
         self._runs[key] = run
         run.worker = asyncio.current_task()
@@ -142,7 +144,7 @@ class AgentCollaborationCoordinator:
             "reviewer_provider_id": reviewer_id,
             "workspace_access_acknowledged": True,
         })
-        await self._event(run, "AGENT_WORKSPACE_BASELINED", self._baseline_metadata())
+        await self._event(run, "AGENT_WORKSPACE_BASELINED", baseline_metadata)
         await self._run_analysis(run)
         run.worker = None
 
@@ -498,18 +500,23 @@ class AgentCollaborationCoordinator:
 
     def _create_worktree(self, run: _Run) -> tuple[Path, str]:
         base = self._git("rev-parse", "--show-toplevel", cwd=self.workspace_root).strip()
+        baseline = run.baseline_commit
+        if baseline is None:
+            raise CollaborationError("collaboration baseline was not recorded")
         self.worktree_root.mkdir(parents=True, exist_ok=True)
         suffix = re.sub(r"[^A-Za-z0-9._-]", "-", f"{run.task_id}-{run.run_id}")[:80]
         branch = f"agent-bridge/{suffix}-{uuid4().hex[:8]}"
         path = self.worktree_root / f"{suffix}-{uuid4().hex[:8]}"
         subprocess.run(
-            ["git", "-C", base, "worktree", "add", "-b", branch, str(path), "HEAD"],
+            ["git", "-C", base, "worktree", "add", "-b", branch, str(path), baseline],
             check=True,
             capture_output=True,
             text=True,
             timeout=60,
         )
-        run.baseline_commit = self._git("rev-parse", "HEAD", cwd=path).strip()
+        actual_baseline = self._git("rev-parse", "HEAD", cwd=path).strip()
+        if actual_baseline != baseline:
+            raise CollaborationError("writer worktree did not match the collaboration baseline")
         return path, branch
 
     def _diff_metadata(

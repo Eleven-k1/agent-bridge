@@ -1,6 +1,10 @@
 # Current Status
 
-Date: 2026-10-23
+Date: 2026-10-24
+
+## Release Position
+
+The browser collaboration workflow and formal project documentation are maintained on Git `master`. The main checkout is the supported launch location; other development worktrees may point to earlier commits and are not the supported launch location.
 
 ## Product
 
@@ -26,7 +30,16 @@ Formal events are persisted in SQLite and are the source of truth for resumable 
 
 ## Verification
 
-Backend full suite: 283 passed using a repository-local pytest base directory. Web UI: 12 client tests passed, TypeScript typecheck passed, and Vite production build passed.
+This release adds a regression test for preserving the collaboration-start `HEAD` while a plan waits for approval. The final verification run was completed after the lockfile-based frontend install and documentation updates.
+
+Release verification:
+
+- [x] Backend full suite: 270 passed with an isolated pytest base directory.
+- [x] Web server suite: 14 passed with a separate pytest base directory.
+- [x] Focused Agent runtime and collaboration integration suite: 30 passed; these tests overlap the backend full suite.
+- [x] Web UI tests: 12 passed after `npm.cmd ci`; TypeScript typecheck and Vite production build passed.
+- [x] Main checkout serves the built Web UI on port 5173 and returns HTTP 200.
+- [x] `git diff --check` passed; runtime databases, logs, build output, and pytest directories are ignored and untracked.
 
 ## Local CLI Smoke Check
 
@@ -39,6 +52,6 @@ The Windows Codex adapter runs the verified `@openai/codex` JavaScript entrypoin
 - A real Codex read-only smoke call passed. Claude started with the expected read-only capabilities, but upstream HTTP 503 responses prevented a final answer; parallel analysis and the full approve/write/review flow still need end-to-end acceptance.
 - This phase supports Codex CLI and Claude Code CLI; DeepSeek Harness, ZCode, and OpenCode need dedicated adapters before they can participate as real agents.
 - The writer currently uses Codex, while analysis and review can select supported providers.
-- Worktree-level verification is complete only after the backend full suite, diff checks, and an interactive Web UI smoke test pass.
+- Full real-provider acceptance remains limited by the external Claude API response described above. Automated and local Web UI verification does not substitute for a successful Claude-backed end-to-end run.
 
 Older desktop UI plans and the August 2026 multi-agent bridge/task-allocation proposals under `docs/superpowers/` are historical references. Use this status document and the current collaboration design dated 2026-10-18 as the execution source of truth.

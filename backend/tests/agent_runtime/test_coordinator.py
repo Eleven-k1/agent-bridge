@@ -173,6 +173,33 @@ def test_approval_runs_one_codex_writer_in_new_worktree_then_independent_reviewe
     assert any(event["event_type"] == "AGENT_PLAN_APPROVED" for event in events)
 
 
+def test_writer_worktree_uses_head_captured_when_collaboration_started(tmp_path):
+    async def body():
+        process = ProcessStub()
+        coordinator, events, _ = await start_coordinator(tmp_path, process)
+        baseline = events[1]["payload"]["baseline_commit"]
+        workspace = tmp_path / "workspace"
+        (workspace / "later.txt").write_text("later commit\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(workspace), "add", "later.txt"], check=True)
+        subprocess.run(
+            ["git", "-C", str(workspace), "-c", "user.email=test@example.com", "-c", "user.name=Agent Test", "commit", "-qm", "later commit"],
+            check=True,
+        )
+        await coordinator.approve_plan("task-test", "run-test", events[-1]["payload"]["approval_digest"])
+        return baseline, process, events
+
+    baseline, process, events = asyncio.run(body())
+    writer_workspace = next(call[3] for call in process.calls if call[1] == "writer")
+    assert subprocess.run(
+        ["git", "-C", str(writer_workspace), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == baseline
+    assert not (writer_workspace / "later.txt").exists()
+    assert events[-1]["payload"]["baseline_commit"] == baseline
+
+
 def test_stale_approval_is_rejected_and_failed_writer_skips_review(tmp_path):
     async def body():
         process = ProcessStub(failed_writer=True)
