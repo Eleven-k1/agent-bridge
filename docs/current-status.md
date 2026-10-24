@@ -49,7 +49,8 @@ Release verification:
 - [x] Direct dependency licenses and provider ownership are documented in `THIRD-PARTY-NOTICES.md`.
 - [x] Windows GitHub Actions CI covers backend, Web server, frontend tests, typecheck, and build.
 - [x] Issue and pull request templates are present under `.github/`.
-- [ ] After creating the GitHub repository, configure the remote, enable private vulnerability reporting, and add the repository description/topics.
+- [x] GitHub Secret Scanning, Push Protection, private vulnerability reporting, Dependabot alerts, and automated security fixes are enabled.
+- [x] GitHub repository, remote, description, and topics are configured; the remaining release work is provider acceptance and future maintenance.
 
 ## Local CLI Smoke Check
 
