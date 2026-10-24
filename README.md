@@ -122,10 +122,12 @@ git diff --check
 - [运行、配置与故障排查](docs/operations.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
+- [许可证](LICENSE)
+- [第三方依赖声明](THIRD-PARTY-NOTICES.md)
 - [本地 CLI 协作设计](docs/superpowers/specs/2026-10-18-local-coding-agent-collaboration-design.md)
 - [Web UI 说明](web-ui/README.md)
 - [公共协议与数据契约](M0-公共协议与数据契约-v0.5.1-最终版.txt)
 
-## 许可证与当前限制
+## 许可证、依赖与当前限制
 
-本仓库当前未声明统一的开源许可证；发布或分发前应补充许可证和第三方依赖清单。Claude Code 最近一次真实请求收到上游 HTTP 503，完整双 Agent 端到端验收需要在上游可用时重跑。OpenCode、DeepSeek Harness、ZCode 需要独立 adapter；当前 writer 固定为 Codex，不提供自动 commit、远程 push、团队多用户、云端调度或多项目并发。
+本项目使用 MIT 许可证，详见 [LICENSE](LICENSE)。直接依赖和第三方软件说明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。Claude Code 最近一次真实请求收到上游 HTTP 503，完整双 Agent 端到端验收需要在上游可用时重跑。OpenCode、DeepSeek Harness、ZCode 需要独立 adapter；当前 writer 固定为 Codex，不提供自动 commit、远程 push、团队多用户、云端调度或多项目并发。

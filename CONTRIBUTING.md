@@ -42,3 +42,5 @@ Use separate pytest base directories for concurrent Windows test runs. Remove th
 ## Pull requests
 
 Explain the problem, the resulting behavior, the files or boundaries changed, and the verification output. State any external dependency or provider limitation explicitly. Do not claim a real CLI integration is accepted based only on adapter unit tests or fake-provider tests.
+
+Public contributions are accepted under the MIT license. Do not include credentials, private workspace files, runtime databases, generated build output, or provider transcripts containing sensitive data.

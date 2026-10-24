@@ -6,6 +6,8 @@ Date: 2026-10-24
 
 The browser collaboration workflow and formal project documentation are maintained on Git `master`. The main checkout is the supported launch location; other development worktrees may point to earlier commits and are not the supported launch location.
 
+The repository is prepared for public Git hosting with an MIT license, dependency notices, CI configuration, and issue/PR templates. GitHub repository settings still need to be configured after the remote repository is created.
+
 ## Product
 
 The supported interface is the local browser Web UI at `http://127.0.0.1:5173/`. The desktop directory contains an early prototype and is not part of the supported workflow.
@@ -40,6 +42,14 @@ Release verification:
 - [x] Web UI tests: 12 passed after `npm.cmd ci`; TypeScript typecheck and Vite production build passed.
 - [x] Main checkout serves the built Web UI on port 5173 and returns HTTP 200.
 - [x] `git diff --check` passed; runtime databases, logs, build output, and pytest directories are ignored and untracked.
+
+## Public Repository Checklist
+
+- [x] MIT license is present at the repository root.
+- [x] Direct dependency licenses and provider ownership are documented in `THIRD-PARTY-NOTICES.md`.
+- [x] Windows GitHub Actions CI covers backend, Web server, frontend tests, typecheck, and build.
+- [x] Issue and pull request templates are present under `.github/`.
+- [ ] After creating the GitHub repository, configure the remote, enable private vulnerability reporting, and add the repository description/topics.
 
 ## Local CLI Smoke Check
 

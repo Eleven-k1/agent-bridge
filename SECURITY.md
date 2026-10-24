@@ -6,7 +6,7 @@ Agent Bridge runs local CLI Agents against a user-selected project workspace. Th
 
 ## Reporting a vulnerability
 
-Do not include API keys, CLI tokens, cookies, private project files, or full database files in an issue or pull request. No public security contact is configured for this repository yet. Until the project owner publishes one, do not disclose suspected vulnerabilities in public issues; send them privately to the project owner through the same private channel used to grant access to this repository and include:
+Do not include API keys, CLI tokens, cookies, private project files, or full database files in an issue or pull request. After publishing the repository, enable GitHub's private vulnerability reporting under **Settings → Code security and analysis** and use the **Report a vulnerability** button in the Security tab. Until that feature is enabled, do not disclose suspected vulnerabilities in public issues; contact the project owner privately and include:
 
 - affected commit or version;
 - operating system and runtime versions;

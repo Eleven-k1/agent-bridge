@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend test package
+        run: python -m pip install --upgrade pip && python -m pip install ".[test]"
+      - name: Run backend tests
+        working-directory: .
+        run: python -m pytest -q -p no:cacheprovider --basetemp=backend\.pytest-run-ci backend\tests
+      - name: Run Web server tests
+        working-directory: .
+        run: python -m pytest -q -p no:cacheprovider --basetemp=backend\.pytest-run-ci-web web-ui\tests
+
+  web-ui:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: web-ui/client
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-ui/client/package-lock.json
+      - name: Install dependencies
+        run: npm.cmd ci --no-audit --no-fund
+      - name: Run frontend tests
+        run: npm.cmd test
+      - name: Typecheck frontend
+        run: npm.cmd run typecheck
+      - name: Build frontend
+        run: npm.cmd run build
